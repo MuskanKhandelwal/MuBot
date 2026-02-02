@@ -1,0 +1,122 @@
+# =============================================================================
+# MuBot - Job Search Cold Emailing Agent
+# =============================================================================
+# This project is an AI-powered Gmail agent designed to help job seekers
+# automate and optimize their cold email outreach while maintaining safety,
+# personalization, and continuous learning.
+#
+# Educational Purpose:
+# This codebase demonstrates:
+#   - Agent-based AI architecture with reasoning and memory
+#   - Retrieval-Augmented Generation (RAG) for context-aware responses
+#   - Model Context Protocol (MCP) integration for external tools
+#   - File-based memory systems for long-term persistence
+#   - Safety guardrails and ethical AI practices
+#   - Job search pipeline management and tracking
+# =============================================================================
+
+[project]
+name = "mubot"
+version = "0.1.0"
+description = "AI-powered job search cold emailing agent with Gmail integration"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["ai", "agent", "job-search", "cold-email", "gmail", "automation"]
+
+# Core dependencies - each serves a specific purpose in the architecture
+dependencies = [
+    # Agent and AI framework - provides the LLM interface and tool calling
+    "openai>=1.0.0",
+    
+    # Vector store for RAG - enables semantic search over past emails
+    "chromadb>=0.4.0",
+    
+    # Embeddings for RAG - converts text to vectors for similarity search
+    "sentence-transformers>=2.2.0",
+    
+    # Gmail API integration - official Google client
+    "google-api-python-client>=2.100.0",
+    "google-auth-httplib2>=0.1.0",
+    "google-auth-oauthlib>=1.0.0",
+    
+    # Data validation and settings management
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    
+    # Scheduling and heartbeat system
+    "schedule>=1.2.0",
+    "APScheduler>=3.10.0",
+    
+    # Markdown processing for memory files
+    "markdown>=3.5.0",
+    "python-frontmatter>=1.0.0",
+    
+    # HTTP client for external APIs
+    "httpx>=0.25.0",
+    
+    # Date/time utilities
+    "python-dateutil>=2.8.0",
+    "pytz>=2023.3",
+    
+    # Environment variable management
+    "python-dotenv>=1.0.0",
+    
+    # Logging and observability
+    "structlog>=23.0.0",
+    
+    # Rich terminal output for better UX
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+# Development dependencies for testing and debugging
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.0.0",
+]
+
+# Documentation dependencies
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+]
+
+[project.scripts]
+# Command-line entry points
+mubot = "mubot.cli:main"
+mubot-init = "mubot.scripts.init_project:main"
+mubot-heartbeat = "mubot.scripts.run_heartbeat:main"
+mubot-chat = "mubot.cli:main"
+mubot-simple = "mubot.agent.simple_cli:main"
+mubot-test = "mubot.test_runner:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+select = ["E", "F", "I", "W", "N", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
