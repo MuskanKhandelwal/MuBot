@@ -90,6 +90,13 @@ docs = [
     "mkdocs-material>=9.0.0",
 ]
 
+# Integration dependencies (optional)
+integrations = [
+    "gspread>=6.0.0",
+    "google-auth>=2.0.0",
+    "notion-client>=2.2.0",
+]
+
 [project.scripts]
 # Command-line entry points
 mubot = "mubot.cli:main"
