@@ -291,15 +291,93 @@ class AutomatedCampaign:
             confirm = input("      Send now? (yes/no): ").strip().lower()
             
             if confirm == "yes" and email:
-                # Draft follow-up
-                # TODO: Implement follow-up drafting
-                print(f"      ✅ {name} sent")
-                task['sent'] = True
+                # Draft and send follow-up
+                success = await self._send_followup_email(task, name)
+                if success:
+                    task['sent'] = True
             else:
                 print(f"      ❌ Skipped\n")
         
         # Save updated state
         self.agent.memory.save_heartbeat_state(state)
+    
+    async def _send_followup_email(self, task: dict, followup_name: str) -> bool:
+        """Draft and send a follow-up email."""
+        try:
+            from mubot.memory.models import OutreachEntry, OutreachStatus
+            
+            company = task.get('company', 'Unknown')
+            role = task.get('role', 'Role')
+            email = task.get('email', '')
+            
+            # Determine follow-up number and tone
+            if '1' in followup_name:
+                followup_num = 1
+                tone = "gentle reminder"
+            elif '2' in followup_name:
+                followup_num = 2
+                tone = "adding value"
+            else:
+                followup_num = 3
+                tone = "final follow-up"
+            
+            # Create a minimal entry for follow-up generation
+            original_entry = OutreachEntry(
+                id=task.get('entry_id', 'unknown'),
+                company_name=company,
+                role_title=role,
+                recipient_email=email,
+                recipient_name="",
+                subject=f"Re: {role} at {company}",
+                body="",
+                status=OutreachStatus.SENT,
+                followup_count=followup_num - 1,
+            )
+            
+            # Draft follow-up
+            print(f"      📝 Drafting {followup_name}...")
+            
+            followup_body = await self.agent.reasoning.draft_followup(
+                original_entry=original_entry,
+                days_elapsed=4 if followup_num == 1 else (8 if followup_num == 2 else 10)
+            )
+            
+            # Show preview
+            print(f"      Subject: Re: {role}")
+            print(f"      Body: {followup_body[:100]}...")
+            
+            # Confirm send
+            confirm = input(f"      Send this {followup_name}? (yes/no): ").strip().lower()
+            
+            if confirm == "yes":
+                # Send via Gmail
+                gmail = self.agent.tools.GmailClient(self.agent.settings)
+                authenticated = await gmail.authenticate()
+                
+                if not authenticated:
+                    print("      ❌ Gmail authentication failed")
+                    return False
+                
+                message_id = await gmail.send_email(
+                    to=email,
+                    subject=f"Re: {role}",
+                    body=followup_body.replace('\n', '<br>'),
+                    apply_label=True
+                )
+                
+                if message_id:
+                    print(f"      ✅ {followup_name} sent successfully!")
+                    return True
+                else:
+                    print(f"      ❌ Failed to send")
+                    return False
+            else:
+                print(f"      ❌ Cancelled")
+                return False
+                
+        except Exception as e:
+            print(f"      ❌ Error: {e}")
+            return False
 
 
 def main():
