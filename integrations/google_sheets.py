@@ -140,18 +140,37 @@ class GoogleSheetsIntegration:
             return False
         
         try:
-            # Find column indices (assuming standard layout)
-            # Status is column G (7), Last Contact is column H (8)
-            status_col = "G"
-            last_contact_col = "H"
+            # Get headers to find correct column indices
+            headers = [h.strip() for h in self.sheet.row_values(1)]
+            
+            # Find column indices (1-based for gspread)
+            try:
+                status_col_idx = headers.index("Status") + 1
+                last_contact_col_idx = headers.index("Last Contact") + 1
+            except ValueError:
+                # Fallback to default positions
+                status_col_idx = 6  # Column F
+                last_contact_col_idx = 7  # Column G
+            
+            # Convert to A1 notation
+            def col_idx_to_letter(idx):
+                """Convert 1-based column index to letter."""
+                result = ""
+                while idx > 0:
+                    idx, remainder = divmod(idx - 1, 26)
+                    result = chr(65 + remainder) + result
+                return result
+            
+            status_col = col_idx_to_letter(status_col_idx)
+            last_contact_col = col_idx_to_letter(last_contact_col_idx)
             
             # Update status
-            self.sheet.update_acell(f"{status_col}{row_number}", status)
+            self.sheet.update_cell(row_number, status_col_idx, status)
             
             # Update last contact
             if last_contact:
                 date_str = last_contact.strftime("%Y-%m-%d %H:%M")
-                self.sheet.update_acell(f"{last_contact_col}{row_number}", date_str)
+                self.sheet.update_cell(row_number, last_contact_col_idx, date_str)
             
             return True
             
