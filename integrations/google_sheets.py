@@ -89,8 +89,14 @@ class GoogleSheetsIntegration:
         if not self.sheet:
             return []
         
-        # Get all records
-        records = self.sheet.get_all_records()
+        # Get all records with cleaned headers
+        raw_records = self.sheet.get_all_records()
+        
+        # Clean up record keys (strip whitespace from headers)
+        records = []
+        for raw_record in raw_records:
+            cleaned_record = {k.strip(): v for k, v in raw_record.items()}
+            records.append(cleaned_record)
         
         pending_jobs = []
         for i, record in enumerate(records, start=2):  # start=2 because row 1 is headers
