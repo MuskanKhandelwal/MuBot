@@ -1,6 +1,6 @@
-# 🤖 MuBot — My Personal Job Search Assistant
+# 🤖 MuBot — My Personal Assistant
 
-> An AI-powered Gmail agent that drafts personalized cold emails from job descriptions and manages follow-ups.
+> An AI-powered agent that drafts personalized cold emails from job descriptions and manages follow-ups.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,7 +9,7 @@
 
 ## ✨ What is MuBot?
 
-**MuBot is my personal AI assistant for job hunting.** It reads job descriptions and drafts tailored cold emails that match my experience to their requirements.
+**MuBot is my personal AI assistant.** It currently reads job descriptions and drafts tailored cold emails that match my experience to their requirements.
 
 ```
 Me: "Draft an email for the Data Scientist role at Netflix"
@@ -43,6 +43,32 @@ MuBot: "✉️ Done! Here's your tailored email matching your Python/ML
 | 🧪 **A/B Testing** | ❌ | Prompt exists, feature not built |
 | 🗄️ **Notion Sync** | ❌ | Placeholder only |
 | 🔍 **RAG Search** | ❌ | ChromaDB setup but not used |
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Input     │────▶│   MuBot     │────▶│   Gmail     │
+│  (Sheets/   │     │  (Reasoning │     │  (Sends     │
+│   Chat)     │     │   + Draft)  │     │   Emails)   │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                           │
+           ┌───────────────┼───────────────┐
+           ▼               ▼               ▼
+    ┌────────────┐  ┌────────────┐  ┌────────────┐
+    │  USER.md   │  │  Memory    │  │  Sheets    │
+    │  (Profile) │  │  (State)   │  │  (Jobs)    │
+    └────────────┘  └────────────┘  └────────────┘
+```
+
+**The Flow:**
+1. **Input** via Google Sheets or interactive chat
+2. **MuBot** reads your profile and drafts personalized emails using job descriptions
+3. **You approve** before sending (safety first!)
+4. **Gmail** sends with resume attachment
+5. **Follow-ups** scheduled automatically
 
 ---
 
