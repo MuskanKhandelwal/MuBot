@@ -352,13 +352,25 @@ class AutomatedCampaign:
             # Draft follow-up
             print(f"      📝 Drafting {followup_name}...")
             
-            followup_body = await self.agent.reasoning.draft_followup(
+            followup_response = await self.agent.reasoning.draft_followup(
                 original_entry=original_entry,
                 days_elapsed=4 if followup_num == 1 else (8 if followup_num == 2 else 10)
             )
             
+            # Parse subject and body from response
+            followup_lines = followup_response.split('\n')
+            followup_subject = f"Re: {role}"
+            followup_body = followup_response
+            
+            # Extract subject if present
+            for i, line in enumerate(followup_lines):
+                if line.lower().startswith('subject:'):
+                    followup_subject = line.split(':', 1)[1].strip()
+                    followup_body = '\n'.join(followup_lines[i+1:]).strip()
+                    break
+            
             # Show preview
-            print(f"      Subject: Re: {role}")
+            print(f"      Subject: {followup_subject}")
             print(f"      Body: {followup_body[:100]}...")
             
             # Confirm send
@@ -376,7 +388,7 @@ class AutomatedCampaign:
                 
                 message_id = await gmail.send_email(
                     to=email,
-                    subject=f"Re: {role}",
+                    subject=followup_subject,
                     body=followup_body.replace('\n', '<br>'),
                     apply_label=True
                 )
