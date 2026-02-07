@@ -391,9 +391,19 @@ class AutomatedCampaign:
             
             # Replace placeholders with actual names
             followup_body = followup_body.replace('[Recipient\'s Name]', recipient_name)
+            followup_body = followup_body.replace('[Hiring Manager\'s Name]', recipient_name)
+            followup_body = followup_body.replace('[Name]', recipient_name)
             followup_body = followup_body.replace('[Your Name]', sender_name.split()[0])  # First name
-            followup_body = followup_body.replace('[Your Contact Information]', 
-                f"{sender_name} | {self.agent.user_profile.phone if self.agent.user_profile and self.agent.user_profile.phone else ''}")
+            
+            # Build contact info line
+            contact_info = sender_name
+            if self.agent.user_profile:
+                if self.agent.user_profile.phone:
+                    contact_info += f" | {self.agent.user_profile.phone}"
+                if self.agent.user_profile.linkedin_url:
+                    contact_info += f" | {self.agent.user_profile.linkedin_url}"
+            
+            followup_body = followup_body.replace('[Your Contact Information]', contact_info)
             
             # Show preview
             print(f"      Subject: {followup_subject}")
