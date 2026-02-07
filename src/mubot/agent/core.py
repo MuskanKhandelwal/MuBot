@@ -234,7 +234,7 @@ class JobSearchAgent:
         if attachments:
             all_attachments.extend(attachments)
         
-        message_id = await gmail.send_email(
+        result = await gmail.send_email(
             to=entry.recipient_email,
             subject=entry.subject,
             body=entry.body.replace('\n', '<br>'),  # Convert to HTML
@@ -243,11 +243,12 @@ class JobSearchAgent:
             attachments=all_attachments if all_attachments else None,
         )
         
-        if not message_id:
+        if not result:
             return False, "Failed to send email via Gmail"
         
         # Update entry with Gmail info
-        entry.gmail_message_id = message_id
+        entry.gmail_message_id = result.get("message_id")
+        entry.gmail_thread_id = result.get("thread_id")
         entry.status = OutreachStatus.SENT
         entry.sent_at = datetime.utcnow()
         

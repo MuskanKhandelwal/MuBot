@@ -26,6 +26,7 @@ from mubot.config import (
     EMAIL_DRAFT_JD_MATCH_PROMPT,
     EMAIL_DRAFT_HUMAN_PROMPT,
 )
+from mubot.config.prompts_human import FOLLOWUP_PROMPT_XML
 from mubot.config.prompts_jd_enhanced import EMAIL_DRAFT_WITH_JD_PROMPT
 from mubot.config.settings import Settings
 from mubot.memory.models import (
@@ -487,19 +488,26 @@ class ReasoningEngine:
         self,
         original_entry: OutreachEntry,
         days_elapsed: int,
+        job_description: str = "",
     ) -> str:
         """
-        Generate a polite follow-up email.
+        Generate a polite follow-up email using XML prompt.
         
         Args:
             original_entry: The original outreach entry
             days_elapsed: Days since original was sent
+            job_description: Original job description for context
         
         Returns:
             Follow-up email content
         """
-        prompt = FOLLOWUP_PROMPT.format(
-            original_email=f"Subject: {original_entry.subject}\n\n{original_entry.body}",
+        # Include JD in context if available
+        original_email_with_jd = f"Subject: {original_entry.subject}\n\n{original_entry.body}"
+        if job_description:
+            original_email_with_jd += f"\n\n[Original Job Description]: {job_description[:500]}"
+        
+        prompt = FOLLOWUP_PROMPT_XML.format(
+            original_email=original_email_with_jd,
             original_date=original_entry.sent_at.isoformat() if original_entry.sent_at else "Unknown",
             days_elapsed=days_elapsed,
             followup_number=original_entry.followup_count + 1,
