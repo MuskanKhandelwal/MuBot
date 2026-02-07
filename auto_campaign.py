@@ -366,7 +366,8 @@ class AutomatedCampaign:
             
             if confirm == "yes":
                 # Send via Gmail
-                gmail = self.agent.tools.GmailClient(self.agent.settings)
+                from mubot.tools.gmail_client import GmailClient
+                gmail = GmailClient(self.agent.settings)
                 authenticated = await gmail.authenticate()
                 
                 if not authenticated:
