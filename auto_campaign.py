@@ -197,6 +197,12 @@ class AutomatedCampaign:
                         
                         # Update status in source
                         await self._update_job_status(job, "Sent")
+                        
+                        # Bulk mode: add delay before next email
+                        if self.bulk:
+                            print("   ⏱️  Waiting 5 seconds before next email...")
+                            import asyncio
+                            await asyncio.sleep(5)
                     else:
                         print(f"   ❌ Failed: {msg}")
                         await self._update_job_status(job, "Send Failed")
