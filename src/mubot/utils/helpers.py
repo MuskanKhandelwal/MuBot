@@ -17,21 +17,6 @@ def generate_id() -> str:
     return str(uuid.uuid4())
 
 
-def generate_short_id(text: str, length: int = 8) -> str:
-    """
-    Generate a short hash ID from text.
-    
-    Args:
-        text: Input text to hash
-        length: Length of output hash
-    
-    Returns:
-        Short hash string
-    """
-    hash_obj = hashlib.md5(text.encode())
-    return hash_obj.hexdigest()[:length]
-
-
 def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
     """
     Truncate text to maximum length.
@@ -139,37 +124,3 @@ def count_words(text: str) -> int:
     """Count words in text."""
     return len(text.split())
 
-
-def estimate_reading_time(text: str, wpm: int = 200) -> int:
-    """
-    Estimate reading time in seconds.
-    
-    Args:
-        text: Text to estimate
-        wpm: Words per minute reading speed
-    
-    Returns:
-        Estimated seconds to read
-    """
-    words = count_words(text)
-    seconds = (words / wpm) * 60
-    return max(1, int(seconds))
-
-
-def pluralize(count: int, singular: str, plural: Optional[str] = None) -> str:
-    """
-    Return singular or plural form based on count.
-    
-    Args:
-        count: Number
-        singular: Singular form
-        plural: Plural form (default: singular + 's')
-    
-    Returns:
-        Appropriate form
-    """
-    if count == 1:
-        return f"{count} {singular}"
-    
-    plural = plural or f"{singular}s"
-    return f"{count} {plural}"

@@ -134,40 +134,6 @@ Why this should work: [brief reasoning]
 
 
 # =============================================================================
-# Email Personalization Prompt
-# =============================================================================
-# Used to enhance an existing email draft with more personalization.
-# =============================================================================
-
-EMAIL_PERSONALIZE_PROMPT = """Enhance this cold email with deeper personalization.
-
-ORIGINAL EMAIL:
-{original_email}
-
-ADDITIONAL CONTEXT DISCOVERED:
-Recipient Recent Activity: {recipient_activity}
-Company Recent News: {company_news}
-Shared Connections: {shared_connections}
-Mutual Interests: {mutual_interests}
-
-PERSONALIZATION STRATEGY:
-1. Reference specific, recent recipient achievement or post
-2. Connect company news to user's skills/interests
-3. Mention mutual connections naturally (if appropriate)
-4. Show genuine research without being creepy
-
-CONSTRAINTS:
-- Keep the same overall length
-- Maintain original tone
-- Don't force connections that don't exist
-- Be specific but respectful of privacy
-
-OUTPUT:
-Provide the enhanced email with [brackets] around new personalization elements so the user can see what was added.
-"""
-
-
-# =============================================================================
 # Follow-Up Drafting Prompt
 # =============================================================================
 # Used to create polite follow-up emails when no response received.

@@ -17,6 +17,7 @@ Models are organized by purpose:
 
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -123,6 +124,9 @@ class OutreachEntry(MemoryEntry):
     gmail_message_id: Optional[str] = None
     labels: list[str] = Field(default_factory=list)
     
+    # Attachments
+    attachments: list[str] = Field(default_factory=list)  # File paths to attach
+    
     # A/B Testing
     variant_name: Optional[str] = None  # e.g., "A", "B" for testing
     
@@ -214,7 +218,7 @@ class UserProfile(BaseModel):
     email: str
     phone: Optional[str] = None
     location: Optional[str] = None
-    timezone: str = "UTC"
+    timezone: str = "EST"
     
     # Professional Background
     current_title: Optional[str] = None
@@ -227,6 +231,7 @@ class UserProfile(BaseModel):
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
     resume_url: Optional[str] = None
+    resume_path: Optional[Path] = None  # Local path for attachments
     
     # Preferences
     preferred_tone: EmailTone = EmailTone.FRIENDLY

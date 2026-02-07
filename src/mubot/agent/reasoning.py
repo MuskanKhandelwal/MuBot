@@ -20,10 +20,11 @@ from openai import AsyncOpenAI
 
 from mubot.config import (
     EMAIL_DRAFT_PROMPT,
-    EMAIL_PERSONALIZE_PROMPT,
     FOLLOWUP_PROMPT,
     RESPONSE_CLASSIFY_PROMPT,
     SYSTEM_PROMPT,
+    EMAIL_DRAFT_JD_MATCH_PROMPT,
+    EMAIL_DRAFT_HUMAN_PROMPT,
 )
 from mubot.config.prompts_jd_enhanced import EMAIL_DRAFT_WITH_JD_PROMPT
 from mubot.config.settings import Settings
@@ -151,33 +152,38 @@ class ReasoningEngine:
         Returns:
             OutreachEntry with generated email
         """
-        # Build the prompt
-        prompt = EMAIL_DRAFT_PROMPT.format(
+        # Build resume highlights for better context
+        resume_highlights = self._build_resume_highlights(user_profile)
+        
+        # Extract first name for casual sign-offs
+        first_name = user_profile.name.split()[0] if user_profile.name else "Muskan"
+        
+        # Use human-style prompt for more natural emails
+        recipient = recipient_name if recipient_name else "Hiring Manager"
+        resume_filename = user_profile.resume_path.name if user_profile.resume_path else "resume.pdf"
+        prompt = EMAIL_DRAFT_HUMAN_PROMPT.format(
             user_name=user_profile.name,
-            user_background=user_profile.summary or "Not provided",
+            user_first_name=first_name,
+            user_background=user_profile.summary or "Data Scientist with ML experience",
+            user_experience=user_profile.years_experience or "3+ years",
+            user_skills=", ".join(user_profile.key_skills) if user_profile.key_skills else "Python, ML",
+            user_resume=resume_highlights,
             target_role=role_title,
             target_company=company_name,
             company_context=company_context,
-            tone_preference=user_profile.preferred_tone.value,
-            recipient_name=recipient_name or "Hiring Manager",
-            recipient_title=recipient_title or "",
-            recipient_background="",  # Could be enriched from LinkedIn
-            connection_type=connection_type or "Cold outreach",
-            job_title=role_title,
-            job_summary=job_description[:500] if job_description else "",  # Truncate
-            interest_reason="Interested in the role and company mission",
-            company_history=company_history or "No prior contact",
+            recipient_name=recipient,
+            job_summary=job_description[:600] if job_description else "",
+            resume_filename=resume_filename,
         )
         
-        # Generate with system context
+        # Generate with human-style system prompt
         messages = [
-            {"role": "system", "content": self._build_system_prompt({
-                "timezone": user_profile.timezone,
-            })},
+            {"role": "system", "content": "You are a helpful assistant that writes natural, conversational cold emails. Be brief, human, and specific."},
             {"role": "user", "content": prompt},
         ]
         
-        response = await self._generate(messages, temperature=0.7)
+        # Lower max_tokens to force shorter emails (100 words ≈ 130 tokens)
+        response = await self._generate(messages, temperature=0.75, max_tokens=800)
         
         # Parse the response to extract subject and body
         subject, body, personalization = self._parse_email_response(response)
@@ -212,39 +218,47 @@ class ReasoningEngine:
         company_history: Optional[str] = None,
     ) -> OutreachEntry:
         """
-        Generate a JD-optimized cold email draft.
+        Generate a JD-optimized cold email draft using human-style prompts.
         
-        This version heavily uses the job description to match requirements
-        with the user's profile for maximum relevance.
+        Creates shorter, more conversational emails that specifically match
+        the user's resume to the job description requirements.
         """
         from datetime import datetime
         import uuid
         from mubot.memory.models import OutreachEntry, OutreachStatus
         
-        # Use the JD-enhanced prompt
-        prompt = EMAIL_DRAFT_WITH_JD_PROMPT.format(
+        # Build resume highlights for better matching
+        resume_highlights = self._build_resume_highlights(user_profile)
+        
+        # Extract first name for casual sign-offs
+        first_name = user_profile.name if user_profile.name else "Muskan"
+        
+        # Use human-style JD matching prompt
+        recipient = recipient_name if recipient_name else "Hiring Manager"
+        resume_filename = user_profile.resume_path.name if user_profile.resume_path else "resume.pdf"
+        prompt = EMAIL_DRAFT_JD_MATCH_PROMPT.format(
             user_name=user_profile.name,
-            user_background=user_profile.summary or "Not provided",
-            user_skills=", ".join(user_profile.key_skills) if user_profile.key_skills else "Not specified",
-            user_experience=user_profile.years_experience or "Several",
-            target_role=role_title,
+            user_first_name=first_name,
+            user_linkedin=user_profile.linkedin_url or "",
+            user_phone=user_profile.phone or "",
+            user_background=user_profile.summary or "Data Scientist with ML experience",
+            user_key_skills=", ".join(user_profile.key_skills) if user_profile.key_skills else "Python, ML",
+            user_resume_highlights=resume_highlights,
             target_company=company_name,
-            company_context=company_context,
-            job_description=job_description[:2000] if job_description else "Not provided",
-            recipient_name=recipient_name or "Hiring Manager",
-            recipient_title=recipient_title or "",
-            tone_preference=user_profile.preferred_tone.value,
+            target_role=role_title,
+            recipient_name=recipient,
+            jd_requirements=job_description[:1000] if job_description else "",
+            resume_filename=resume_filename,
         )
         
-        # Generate with system context
+        # Generate with human-style system prompt
         messages = [
-            {"role": "system", "content": self._build_system_prompt({
-                "timezone": user_profile.timezone,
-            })},
+            {"role": "system", "content": "You are a helpful assistant that writes natural, conversational cold emails. Be brief, human, and specific."},
             {"role": "user", "content": prompt},
         ]
         
-        response = await self._generate(messages, temperature=0.7, max_tokens=2500)
+        # Lower max_tokens to force shorter emails (100 words ≈ 130 tokens)
+        response = await self._generate(messages, temperature=0.75, max_tokens=1000)
         
         # Parse the response
         subject, body, personalization = self._parse_email_response(response)
@@ -267,11 +281,22 @@ class ReasoningEngine:
         
         return entry
     
+    def _build_resume_highlights(self, user_profile: UserProfile) -> str:
+        """Build resume highlights string from user profile for matching."""
+        highlights = []
+        if user_profile.summary:
+            highlights.append(user_profile.summary)
+        if user_profile.years_experience:
+            highlights.append(f"{user_profile.years_experience} years experience")
+        if user_profile.key_skills:
+            highlights.append(f"Skills: {', '.join(user_profile.key_skills)}")
+        return "; ".join(highlights) if highlights else "Experienced professional"
+    
     def _parse_email_response(self, response: str) -> tuple[str, str, list[str]]:
         """
         Parse LLM response to extract email components.
         
-        Handles both regular and JD-enhanced email formats.
+        Handles both XML and regular email formats.
         
         Args:
             response: Raw LLM output
@@ -279,11 +304,33 @@ class ReasoningEngine:
         Returns:
             Tuple of (subject, body, personalization_elements)
         """
-        lines = response.split("\n")
+        import re
+        
         subject = ""
-        body_lines = []
+        body = ""
         personalization = []
         
+        # Try XML format first
+        # Extract subject from <subject> tags
+        subject_match = re.search(r'<subject>(.*?)</subject>', response, re.DOTALL | re.IGNORECASE)
+        if subject_match:
+            subject = subject_match.group(1).strip()
+        
+        # Extract body from <email_body>, <email>, or <email_body> tags
+        body_match = re.search(r'<email_body>(.*?)</email_body>', response, re.DOTALL | re.IGNORECASE)
+        if not body_match:
+            body_match = re.search(r'<email>(.*?)</email>', response, re.DOTALL | re.IGNORECASE)
+        if body_match:
+            body = body_match.group(1).strip()
+        
+        # If XML parsing succeeded, return results
+        if subject and body:
+            body = self._fix_paragraph_spacing(body)
+            return subject, body, personalization
+        
+        # Fallback: Parse non-XML format
+        lines = response.split("\n")
+        body_lines = []
         in_body = False
         in_personalization = False
         
@@ -295,7 +342,7 @@ class ReasoningEngine:
                 subject = line_stripped.split(":", 1)[1].strip()
                 continue
             
-            # Stop at separator (---) - marks end of email, start of analysis
+            # Stop at separator (---)
             if line_stripped == "---":
                 in_body = False
                 in_personalization = False
@@ -305,16 +352,17 @@ class ReasoningEngine:
             if subject and not in_body and not line_stripped.startswith("Personalization"):
                 in_body = True
             
-            # Personalization section (for backward compatibility)
+            # Personalization section
             if "personalization" in line_stripped.lower() or "why this should work" in line_stripped.lower():
                 in_body = False
                 in_personalization = True
                 continue
             
-            # JD Analysis section markers - stop body collection
+            # JD Analysis section markers
             if any(marker in line_stripped.lower() for marker in [
                 "jd keywords used:", "requirements matched:", "why this fits:", 
-                "for agent analysis", "not part of email"
+                "for agent analysis", "not part of email", "for tracking:",
+                "matches made:", "---"
             ]):
                 in_body = False
                 in_personalization = False
@@ -331,15 +379,13 @@ class ReasoningEngine:
                     personalization.append(elem)
         
         body = "\n".join(body_lines).strip()
-        
-        # Post-process: Ensure proper paragraph spacing
         body = self._fix_paragraph_spacing(body)
         
         # Fallback if parsing failed
         if not subject:
             subject = "Interest in opportunities at your company"
         if not body:
-            body = response  # Use full response as body
+            body = response
         
         return subject, body, personalization
     
@@ -351,10 +397,11 @@ class ReasoningEngine:
         """
         import re
         
-        # First, check if the body already has proper paragraph breaks
-        if '\n\n' in body:
-            # Already has spacing, just clean up
-            return body.strip()
+        # Handle greetings that don't end with periods (Hi Name,)
+        # Replace comma with period so it gets split properly
+        body = re.sub(r'^(Hi\s+\w+),\s*', r'\1. ', body, flags=re.IGNORECASE)
+        body = re.sub(r'^(Hello\s+\w+),\s*', r'\1. ', body, flags=re.IGNORECASE)
+        body = re.sub(r'^(Dear\s+\w+),\s*', r'\1. ', body, flags=re.IGNORECASE)
         
         # Split into sentences
         # This regex splits at periods followed by space and capital letter
@@ -366,14 +413,18 @@ class ReasoningEngine:
         
         # Paragraph starters - sentences that typically start new paragraphs
         para_starters = [
-            'dear', 'hi ', 'hello',
-            'over the past', 'with over', 'i have ', 'my experience',
-            'i am particularly', 'i would ', 'additionally', 'furthermore',
-            'moreover', 'in my ', 'at ', 'could we', 'thank you',
-            'best regards', 'warm regards', 'sincerely'
+            'dear ', 'hi ', 'hello ',
+            'saw ', 'came across', 'noticed', 'read about',
+            'over the past', 'with over', 'i have ', 'my experience', "i've ",
+            'built ', 'created ', 'developed ', 'worked ', 'led ', 'managed ',
+            'worth a', 'open to', 'would love', 'could we', 'let me',
+            'additionally', 'furthermore', 'moreover', 'in my ', 'at ',
+            'thank you', 'thanks', 'best', 'best regards', 'warm regards', 'sincerely',
+            '-', '—', 'muskan', '[your name]'
         ]
         
-        for sentence in sentences:
+        prev_was_greeting = False
+        for i, sentence in enumerate(sentences):
             sentence = sentence.strip()
             if not sentence:
                 continue
@@ -386,6 +437,13 @@ class ReasoningEngine:
                 if sentence_lower.startswith(starter):
                     starts_new_para = True
                     break
+            
+            # Force new paragraph after greeting (Hi/Hello/Dear Name,)
+            if prev_was_greeting and current_para:
+                starts_new_para = True
+            
+            # Track if this sentence is a greeting
+            prev_was_greeting = sentence_lower.startswith(('hi ', 'hello ', 'dear ')) and i == 0
             
             if starts_new_para and current_para:
                 # Save current paragraph and start new one
@@ -409,56 +467,17 @@ class ReasoningEngine:
                 cleaned.append(p)
         
         # Join with double newlines
-        return '\n\n'.join(cleaned)
-    
-    # ======================================================================
-    # Email Personalization
-    # ======================================================================
-    
-    async def personalize_email(
-        self,
-        original_email: OutreachEntry,
-        additional_context: dict,
-    ) -> OutreachEntry:
-        """
-        Enhance an email with additional personalization.
+        result = '\n\n'.join(cleaned)
         
-        Args:
-            original_email: The email to enhance
-            additional_context: New context discovered (news, activity, etc.)
+        # Restore greeting comma (Hi Name. -> Hi Name,)
+        result = re.sub(r'^(Hi\s+\w+)\.', r'\1,', result, flags=re.IGNORECASE)
+        result = re.sub(r'^(Hello\s+\w+)\.', r'\1,', result, flags=re.IGNORECASE)
+        result = re.sub(r'^(Dear\s+\w+)\.', r'\1,', result, flags=re.IGNORECASE)
         
-        Returns:
-            Updated OutreachEntry with enhanced content
-        """
-        prompt = EMAIL_PERSONALIZE_PROMPT.format(
-            original_email=f"Subject: {original_email.subject}\n\n{original_email.body}",
-            recipient_activity=additional_context.get("recipient_activity", ""),
-            company_news=additional_context.get("company_news", ""),
-            shared_connections=additional_context.get("shared_connections", ""),
-            mutual_interests=additional_context.get("mutual_interests", ""),
-        )
+        # Strip markdown link formatting [text](url) -> url
+        result = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'\2', result)
         
-        messages = [
-            {"role": "system", "content": "You are an expert at personalizing cold emails."},
-            {"role": "user", "content": prompt},
-        ]
-        
-        response = await self._generate(messages, temperature=0.6)
-        
-        # Parse enhanced email
-        subject, body, _ = self._parse_email_response(response)
-        
-        # Create updated entry
-        updated = original_email.model_copy()
-        if subject:
-            updated.subject = subject
-        if body:
-            updated.body = body
-        
-        # Track what was added
-        updated.personalization_elements.append(f"Enhanced with: {list(additional_context.keys())}")
-        
-        return updated
+        return result
     
     # ======================================================================
     # Follow-Up Generation

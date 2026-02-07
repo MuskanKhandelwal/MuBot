@@ -10,9 +10,13 @@ from mubot.config.settings import Settings, get_settings
 from mubot.config.prompts import (
     SYSTEM_PROMPT,
     EMAIL_DRAFT_PROMPT,
-    EMAIL_PERSONALIZE_PROMPT,
     FOLLOWUP_PROMPT,
     RESPONSE_CLASSIFY_PROMPT,
+)
+from mubot.config.prompts_human import (
+    EMAIL_DRAFT_HUMAN_PROMPT,
+    EMAIL_DRAFT_SHORT_PROMPT,
+    EMAIL_DRAFT_JD_MATCH_PROMPT,
 )
 
 __all__ = [
@@ -20,7 +24,9 @@ __all__ = [
     "get_settings",
     "SYSTEM_PROMPT",
     "EMAIL_DRAFT_PROMPT",
-    "EMAIL_PERSONALIZE_PROMPT",
     "FOLLOWUP_PROMPT",
     "RESPONSE_CLASSIFY_PROMPT",
+    "EMAIL_DRAFT_HUMAN_PROMPT",
+    "EMAIL_DRAFT_SHORT_PROMPT",
+    "EMAIL_DRAFT_JD_MATCH_PROMPT",
 ]

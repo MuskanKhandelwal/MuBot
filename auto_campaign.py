@@ -39,8 +39,9 @@ class AutomatedCampaign:
     sends emails, and schedules follow-ups.
     """
     
-    def __init__(self, source: str = "sheets"):
+    def __init__(self, source: str = "sheets", bulk: bool = False):
         self.source = source
+        self.bulk = bulk
         self.agent = JobSearchAgent()
         self.integration = None
         
@@ -161,18 +162,32 @@ class AutomatedCampaign:
                 print("   🏃 DRY RUN - Would send email and schedule follow-ups")
                 return
             
-            # Confirm before sending
+            # Confirm before sending (unless in bulk mode)
             if email:
-                confirm = input(f"   Send to {email}? (yes/no/skip): ").strip().lower()
+                if self.bulk:
+                    # Bulk mode: auto-send without confirmation
+                    print(f"   🚀 BULK MODE: Auto-sending to {email}")
+                    confirm = "yes"
+                else:
+                    confirm = input(f"   Send to {email}? (yes/no/skip): ").strip().lower()
                 
                 if confirm == "skip":
                     print("   ⏭️  Skipping this job")
                     return
                 
                 if confirm == "yes":
-                    # Send email
+                    # Send email with resume attachment if available
                     draft.recipient_email = email
-                    success, msg = await self.agent.send_email(draft, approved=True)
+                    
+                    # Get resume path from user profile
+                    resume_attachments = None
+                    if self.agent.user_profile and self.agent.user_profile.resume_path:
+                        resume_attachments = [str(self.agent.user_profile.resume_path)]
+                        print(f"   📎 Attaching: {self.agent.user_profile.resume_path.name}")
+                    
+                    success, msg = await self.agent.send_email(
+                        draft, approved=True, attachments=resume_attachments
+                    )
                     
                     if success:
                         print(f"   ✅ {msg}")
@@ -407,11 +422,16 @@ def main():
         action="store_true",
         help="Only run pending follow-ups"
     )
+    parser.add_argument(
+        "--bulk",
+        action="store_true",
+        help="Bulk mode - send emails without confirmation prompts"
+    )
     
     args = parser.parse_args()
     
     async def run():
-        campaign = AutomatedCampaign(source=args.source)
+        campaign = AutomatedCampaign(source=args.source, bulk=args.bulk)
         await campaign.initialize()
         
         if args.followups_only:
