@@ -213,45 +213,6 @@ class JobPipeline:
         
         return opp
     
-    def get_opportunity(self, opp_id: str) -> Optional[JobOpportunity]:
-        """
-        Get an opportunity by ID.
-        
-        Args:
-            opp_id: Opportunity ID
-        
-        Returns:
-            JobOpportunity if found, None otherwise
-        """
-        return self._opportunities.get(opp_id)
-    
-    def update_opportunity(
-        self,
-        opp_id: str,
-        **kwargs,
-    ) -> Optional[JobOpportunity]:
-        """
-        Update an opportunity's fields.
-        
-        Args:
-            opp_id: Opportunity ID
-            **kwargs: Fields to update
-        
-        Returns:
-            Updated JobOpportunity if found
-        """
-        opp = self._opportunities.get(opp_id)
-        if not opp:
-            return None
-        
-        for key, value in kwargs.items():
-            if hasattr(opp, key):
-                setattr(opp, key, value)
-        
-        opp.updated_at = datetime.utcnow()
-        self._save_opportunities()
-        
-        return opp
     
     def delete_opportunity(self, opp_id: str) -> bool:
         """
@@ -461,20 +422,3 @@ class JobPipeline:
         
         return "\n".join(lines)
     
-    # ======================================================================
-    # Notion Integration (Optional)
-    # ======================================================================
-    
-    async def sync_to_notion(self, notion_client=None) -> bool:
-        """
-        Sync opportunities to Notion database.
-        
-        Args:
-            notion_client: Notion client instance
-        
-        Returns:
-            True if sync successful
-        """
-        # TODO: Implement Notion sync
-        print("Notion sync not yet implemented")
-        return False

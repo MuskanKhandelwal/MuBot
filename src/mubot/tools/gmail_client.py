@@ -16,8 +16,10 @@ the Model Context Protocol (MCP) pattern for tool integration.
 import base64
 import pickle
 from datetime import datetime
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email import encoders
 from pathlib import Path
 from typing import Optional
 
@@ -150,6 +152,7 @@ class GmailClient:
         bcc: Optional[list[str]] = None,
         thread_id: Optional[str] = None,
         apply_label: bool = True,
+        attachments: Optional[list[str]] = None,
     ) -> Optional[str]:
         """
         Send an email via Gmail.
@@ -162,6 +165,7 @@ class GmailClient:
             bcc: BCC recipients
             thread_id: Thread ID for replies
             apply_label: Whether to apply the outreach/sent label
+            attachments: List of file paths to attach
         
         Returns:
             Message ID if sent successfully, None otherwise
@@ -172,8 +176,8 @@ class GmailClient:
         from datetime import datetime
         import uuid
         
-        # Create MIME message
-        message = MIMEMultipart("alternative")
+        # Create outer MIME message (mixed for attachments)
+        message = MIMEMultipart("mixed")
         message["To"] = to
         message["From"] = self.sender_email
         message["Subject"] = subject
@@ -181,10 +185,6 @@ class GmailClient:
         # Add headers to avoid spam warnings
         message["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
         message["Message-ID"] = f"<{uuid.uuid4()}@gmail.com>"
-        message["MIME-Version"] = "1.0"
-        message["Content-Type"] = 'multipart/alternative; boundary="boundary"'
-        
-        # Add Reply-To if different from sender
         message["Reply-To"] = self.sender_email
         
         if cc:
@@ -192,9 +192,12 @@ class GmailClient:
         if bcc:
             message["Bcc"] = ", ".join(bcc)
         
+        # Create alternative part for body (plain + html)
+        msg_alternative = MIMEMultipart("alternative")
+        
         # Add body (as both plain text and HTML)
         plain_body = self._html_to_text(body)
-        message.attach(MIMEText(plain_body, "plain", "utf-8"))
+        msg_alternative.attach(MIMEText(plain_body, "plain", "utf-8"))
         
         # Wrap HTML body in proper HTML structure if not already
         if not body.strip().startswith("<"):
@@ -210,7 +213,16 @@ class GmailClient:
         else:
             html_body = body
         
-        message.attach(MIMEText(html_body, "html", "utf-8"))
+        msg_alternative.attach(MIMEText(html_body, "html", "utf-8"))
+        message.attach(msg_alternative)
+        
+        # Add attachments
+        if attachments:
+            for file_path in attachments:
+                if Path(file_path).exists():
+                    self._attach_file(message, file_path)
+                else:
+                    print(f"⚠️ Attachment not found: {file_path}")
         
         # Encode for Gmail API
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -236,6 +248,32 @@ class GmailClient:
         except HttpError as e:
             print(f"Error sending email: {e}")
             return None
+    
+    def _attach_file(self, message: MIMEMultipart, file_path: str):
+        """Attach a file to the message."""
+        path = Path(file_path)
+        filename = path.name
+        
+        # Guess content type
+        content_type = "application/octet-stream"
+        if filename.endswith(".pdf"):
+            content_type = "application/pdf"
+        elif filename.endswith((".doc", ".docx")):
+            content_type = "application/msword"
+        elif filename.endswith(".txt"):
+            content_type = "text/plain"
+        
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(file_data)
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f'attachment; filename="{filename}"',
+        )
+        message.attach(part)
     
     async def get_message(self, message_id: str) -> Optional[dict]:
         """

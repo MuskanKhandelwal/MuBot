@@ -102,8 +102,8 @@ class GoogleSheetsIntegration:
         for i, record in enumerate(records, start=2):  # start=2 because row 1 is headers
             status = str(record.get("Status", "")).strip().lower()
             
-            # Include if status is Pending, blank, or not set
-            if status in ["pending", "", "not started", "to do"]:
+            # Include if status is Pending, blank, failed, or not set
+            if status in ["pending", "", "not started", "to do", "send failed", "failed", "retry"]:
                 job = {
                     "row_number": i,
                     "company": record.get("Company", ""),

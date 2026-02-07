@@ -20,7 +20,7 @@ The agent follows a structured workflow (the REACT pattern):
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import AsyncIterator, Optional
 
 from mubot.agent.reasoning import ReasoningEngine
@@ -193,6 +193,7 @@ class JobSearchAgent:
         self,
         entry: OutreachEntry,
         approved: bool = False,
+        attachments: Optional[list[str]] = None,
     ) -> tuple[bool, str]:
         """
         Send an email after safety validation.
@@ -200,6 +201,7 @@ class JobSearchAgent:
         Args:
             entry: OutreachEntry to send
             approved: Whether user has explicitly approved
+            attachments: Optional list of file paths to attach
         
         Returns:
             Tuple of (success, message)
@@ -227,12 +229,18 @@ class JobSearchAgent:
         if not authenticated:
             return False, "Gmail authentication failed. Please check your credentials."
         
+        # Combine entry attachments with passed attachments
+        all_attachments = list(entry.attachments or [])
+        if attachments:
+            all_attachments.extend(attachments)
+        
         message_id = await gmail.send_email(
             to=entry.recipient_email,
             subject=entry.subject,
             body=entry.body.replace('\n', '<br>'),  # Convert to HTML
             thread_id=entry.gmail_thread_id,
             apply_label=True,
+            attachments=all_attachments if all_attachments else None,
         )
         
         if not message_id:

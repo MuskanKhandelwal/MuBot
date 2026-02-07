@@ -129,6 +129,10 @@ class MemoryManager:
                 data["name"] = line.split(":", 1)[1].strip(" []")
             elif "**Email**:" in line:
                 data["email"] = line.split(":", 1)[1].strip(" []")
+            elif "**Phone**:" in line:
+                phone = line.split(":", 1)[1].strip(" []")
+                if phone and phone != "[optional]":
+                    data["phone"] = phone
             elif "**Timezone**:" in line:
                 data["timezone"] = line.split(":", 1)[1].strip()
             
@@ -146,6 +150,23 @@ class MemoryManager:
                     data["years_experience"] = int(line.split(":", 1)[1].strip())
                 except ValueError:
                     pass
+            elif "**Summary**:" in line:
+                data["summary"] = line.split(":", 1)[1].strip()
+            elif "**Resume**:" in line or "**Resume Path**:" in line:
+                path_str = line.split(":", 1)[1].strip()
+                if path_str and path_str != "[optional]":
+                    from pathlib import Path
+                    data["resume_path"] = Path(path_str)
+            
+            # Links
+            elif "**LinkedIn**:" in line:
+                url = line.split(":", 1)[1].strip()
+                if url and not url.startswith("["):
+                    data["linkedin_url"] = url
+            elif "**GitHub**:" in line:
+                url = line.split(":", 1)[1].strip()
+                if url and not url.startswith("["):
+                    data["github_url"] = url
         
         return data
     
@@ -273,18 +294,6 @@ class MemoryManager:
         
         return stats
     
-    def can_send_email_today(self, max_emails: int = 20) -> bool:
-        """
-        Check if the user can send more emails today based on limits.
-        
-        Args:
-            max_emails: Maximum allowed emails per day
-        
-        Returns:
-            True if under limit, False otherwise
-        """
-        stats = self.get_daily_stats()
-        return stats.emails_sent < max_emails
     
     # ======================================================================
     # Heartbeat State Operations

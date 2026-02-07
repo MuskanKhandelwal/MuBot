@@ -1,6 +1,6 @@
 # 🤖 MuBot — My Personal Job Search Assistant
 
-> An AI-powered Gmail agent that helps me craft personalized cold emails, track applications, and manage follow-ups — all through natural conversation.
+> An AI-powered Gmail agent that drafts personalized cold emails from job descriptions and manages follow-ups.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,7 +9,7 @@
 
 ## ✨ What is MuBot?
 
-**MuBot is my personal AI assistant for job hunting.** Instead of manually writing cold emails and tracking spreadsheets, I just chat with MuBot:
+**MuBot is my personal AI assistant for job hunting.** It reads job descriptions and drafts tailored cold emails that match my experience to their requirements.
 
 ```
 Me: "Draft an email for the Data Scientist role at Netflix"
@@ -21,101 +21,114 @@ MuBot: "✉️ Done! Here's your tailored email matching your Python/ML
         experience to their requirements..."
 ```
 
-### Current Features (Mini Version)
+### What's Actually Working
 
-| Feature | What It Does |
-|---------|--------------|
-| 💬 **Chat Interface** | Talk naturally — no code needed |
-| 📄 **JD Support** | Paste full job descriptions for tailored emails |
-| 📅 **Auto Follow-ups** | Schedules follow-ups automatically after sending |
-| 📊 **Pipeline Tracking** | Track applications from first contact to offer |
-| 🛡️ **Safety First** | Explicit approval required for every send |
-| 🧠 **Memory** | Remembers my profile and past outreach |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| 💬 **Chat Interface** | ✅ | Interactive chat that asks for JD, company, role |
+| 📄 **JD-Enhanced Emails** | ✅ | Matches your skills to job requirements |
+| 📧 **Gmail Integration** | ✅ | Sends emails with resume attachments |
+| 📊 **Google Sheets** | ✅ | Bulk campaign from spreadsheet |
+| 📅 **Follow-up Scheduling** | ✅ | Auto-schedules 3 follow-ups (4/8/10 days) |
+| 🛡️ **Safety Controls** | ✅ | Rate limiting, daily limits, confirmations |
+| 📝 **Human-Style Prompts** | ✅ | Short, casual emails with phone/LinkedIn |
 
-### Coming Soon
+### What's Not Working (Yet)
 
-- [ ] LinkedIn integration for company research
-- [ ] Web UI for easier job tracking
-- [ ] Resume tailoring based on JD
-- [ ] Interview scheduler
-- [ ] A/B testing for email templates
-- [ ] Notion database sync
-
----
-
-## 🏗️ How It Works
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Me Chat   │────▶│  MuBot AI   │────▶│   Gmail     │
-│  (Natural   │     │  (Understand│     │  (Sends     │
-│   Language) │     │   + Draft)  │     │   Emails)   │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌────────────┐  ┌────────────┐  ┌────────────┐
-    │  USER.md   │  │  MEMORY    │  │  Pipeline  │
-    │  (Profile) │  │  (History) │  │  (Tracker) │
-    └────────────┘  └────────────┘  └────────────┘
-```
-
-**The Flow:**
-1. **I chat** with MuBot in plain English
-2. **MuBot reads** my profile (USER.md) and past outreach
-3. **MuBot drafts** personalized emails using job descriptions
-4. **I approve** before sending (safety first!)
-5. **MuBot tracks** everything in my pipeline
-6. **MuBot reminds** me to follow up
+| Feature | Status | Note |
+|---------|--------|------|
+| 🔗 **LinkedIn Integration** | ❌ | Code exists but not wired up |
+| 🔄 **Response Tracking** | ❌ | Can check Gmail but not automated |
+| 📊 **Pipeline Dashboard** | ❌ | Model exists, UI not implemented |
+| 🧪 **A/B Testing** | ❌ | Prompt exists, feature not built |
+| 🗄️ **Notion Sync** | ❌ | Placeholder only |
+| 🔍 **RAG Search** | ❌ | ChromaDB setup but not used |
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Clone & Install
+### 1. Setup
 
 ```bash
 git clone https://github.com/MuskanKhandelwal/MuBot.git
 cd MuBot
 
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -e "."
 ```
 
-### 2. Set Up
+### 2. Configure
 
 ```bash
-# Initialize MuBot
-python -m mubot.scripts.init_project
+# Copy example env
+cp .env.example .env
 
-# Edit environment variables
-nano .env  # Add your OPENAI_API_KEY
+# Edit with your keys
+nano .env
 ```
 
-### 3. Personalize
+Add to `.env`:
+```
+OPENAI_API_KEY=sk-your-key-here
+```
 
-Edit `data/USER.md` with your details:
+### 3. Create Your Profile
+
+Edit `data/USER.md`:
 ```markdown
 ## Identity
 - **Name**: Your Name
 - **Email**: your.email@gmail.com
-- **Current Title**: Data Scientist
+- **Phone**: +1 555-123-4567
 
-## Background
-- **Summary**: I have 3 years of experience in...
-- **Key Skills**: Python, SQL, ML, GenAI
+## Professional Background
+- **Current Title**: Data Scientist
+- **Summary**: I have 3+ years building ML models...
+- **Key Skills**: Python, SQL, MLOps, GenAI
+- **Years of Experience**: 3
+
+## Links
+- **LinkedIn**: https://linkedin.com/in/yourname
+- **Resume Path**: /path/to/your/resume.pdf
 ```
 
-### 4. Chat with MuBot
+### 4. Authenticate Gmail
+
+```bash
+python -c "from src.mubot.tools.gmail_client import GmailClient; from src.mubot.config import Settings; import asyncio; asyncio.run(GmailClient(Settings()).authenticate())"
+```
+
+---
+
+## 📧 Usage
+
+### Option 1: Bulk Campaign (Google Sheets)
+
+Create a Google Sheet "Job Applications" with columns:
+- Company, Role Title, Email, Job Description, Status
+
+```bash
+# Send all pending jobs (with confirmation)
+python auto_campaign.py --source sheets --limit 10
+
+# Bulk mode (no confirmation prompts)
+python auto_campaign.py --source sheets --limit 10 --bulk
+
+# Dry run (preview only)
+python auto_campaign.py --source sheets --limit 5 --dry-run
+```
+
+### Option 2: Interactive Chat
 
 ```bash
 python mubot_chat_enhanced.py
 ```
 
-**Example conversation:**
+**Example session:**
 ```
-🤖 MuBot: Hi! How can I help with your job search?
+🤖 MuBot: Hi! How can I help?
 
 You: Draft an email for Data Scientist at Stripe
 
@@ -124,19 +137,54 @@ You: Draft an email for Data Scientist at Stripe
 You: [paste JD]
 You: DONE
 
-🤖 MuBot: ✉️ Draft ready! 
-      Subject: Excited to Contribute to Stripe's Data Team
+🤖 MuBot: ✉️ Draft ready!
+      Subject: Data Scientist Role at Stripe
       
-      [Email body with JD keywords matched to your profile]
+      Hi [Name],
       
-      Type 'send' to send, or 'redraft' to try again.
-
-You: send
-🤖 MuBot: 🚀 Ready to send! Type 'yes' to confirm.
+      I came across the Data Scientist role at Stripe...
+      
+      [2 more paragraphs]
+      
+      Best,
+      Your Name
+      +1 555-123-4567 | linkedin.com/in/you
+      
+      Send to hiring@stripe.com? (yes/no): 
 
 You: yes
-🤖 MuBot: ✅ Sent! 📅 Follow-up scheduled in 5 days.
+🤖 MuBot: ✅ Sent! 📎 Attached resume.pdf
 ```
+
+### Option 3: Schedule Follow-ups
+
+```bash
+python schedule_followup.py
+```
+
+---
+
+## ⚙️ Configuration
+
+### Rate Limiting (`.env`)
+
+```bash
+# Seconds between emails (for bulk sending)
+MIN_EMAIL_INTERVAL_SECONDS=5
+
+# Max emails per day
+MAX_DAILY_EMAILS=20
+
+# Require confirmation before send
+REQUIRE_SEND_APPROVAL=true
+```
+
+### Email Style
+
+Edit `src/mubot/config/prompts_human.py` to change:
+- Tone (casual/professional)
+- Length constraints
+- What to include/exclude
 
 ---
 
@@ -144,51 +192,49 @@ You: yes
 
 ```
 MuBot/
-├── mubot_chat_enhanced.py      # 💬 Main chat interface (use this!)
-├── interactive_bot.py          # 🗣️ Simple chat bot
-├── schedule_followup.py        # 📅 Manual follow-up scheduler
+├── auto_campaign.py          # 📧 Bulk email campaigns
+├── mubot_chat_enhanced.py    # 💬 Interactive chat
+├── schedule_followup.py      # 📅 Follow-up scheduler
 │
-├── src/mubot/                  # 🤖 Core code
-│   ├── agent/                  #    AI agent & reasoning
-│   ├── memory/                 #    File-based memory system
-│   ├── tools/                  #    Gmail, RAG, Scheduler
-│   └── config/                 #    Prompts & settings
+├── src/mubot/
+│   ├── agent/                # Core agent logic
+│   │   ├── core.py           # Main JobSearchAgent
+│   │   ├── reasoning.py      # LLM email drafting
+│   │   └── safety.py         # Rate limits, safety checks
+│   ├── tools/
+│   │   ├── gmail_client.py   # Gmail API
+│   │   └── scheduler.py      # Follow-up scheduling
+│   ├── memory/
+│   │   ├── manager.py        # File-based memory
+│   │   └── models.py         # Data models
+│   └── config/
+│       ├── prompts_human.py  # XML email prompts
+│       └── settings.py       # Config
 │
-├── guides/                     # 📚 Documentation
-│   ├── CUSTOMIZATION_GUIDE.md  #    Customize templates
-│   └── FOLLOWUP_GUIDE.md       #    Manage follow-ups
+├── integrations/
+│   └── google_sheets.py      # Sheets API
 │
-├── data/                       # 💾 Your data (ignored by git)
-│   ├── USER.md                 #    Your profile
-│   ├── MEMORY.md               #    Learnings & rules
-│   └── heartbeat-state.json    #    Scheduled tasks
+├── data/                     # Your data (git-ignored)
+│   ├── USER.md               # Your profile
+│   └── heartbeat-state.json  # Scheduled follow-ups
 │
-└── examples/                   # 📖 Example scripts
+└── credentials/              # API credentials
+    └── gmail_credentials.json
 ```
 
 ---
 
-## 🎯 Commands
+## 🎯 Available Commands
 
-### Email Management
-| Command | Description |
-|---------|-------------|
-| `Draft an email for [role] at [company]` | Creates JD-optimized draft |
-| `send` | Sends the last draft (asks confirmation) |
-| `Check follow-ups` | Shows pending follow-ups |
-
-### Pipeline Management
-| Command | Description |
-|---------|-------------|
-| `Add [company] to my pipeline` | Track a new opportunity |
-| `What's in my pipeline?` | View all opportunities |
-| `Move [company] to [stage]` | Update pipeline stage |
-
-### Info
-| Command | Description |
-|---------|-------------|
-| `Show my daily summary` | Emails sent, replies, etc. |
-| `Help` | Show all commands |
+| Command | Works? | Description |
+|---------|--------|-------------|
+| `Draft an email for [role] at [company]` | ✅ | Interactive JD collection + drafting |
+| Bulk Sheets campaign | ✅ | Send to multiple jobs at once |
+| Resume attachment | ✅ | Auto-attaches PDF |
+| Follow-up scheduling | ✅ | Schedules 3 follow-ups |
+| Check follow-ups | ⚠️ | Lists scheduled (sending TODO) |
+| Pipeline tracking | ❌ | Not implemented |
+| Response checking | ❌ | Not automated |
 
 ---
 
@@ -197,49 +243,40 @@ MuBot/
 | Component | Technology |
 |-----------|------------|
 | **LLM** | OpenAI GPT-4 |
-| **Memory** | File-based (Markdown + JSON) |
-| **Vector Search** | ChromaDB + Sentence Transformers |
 | **Email** | Gmail API (OAuth) |
-| **Scheduling** | APScheduler |
+| **Data** | Google Sheets |
+| **Storage** | Markdown + JSON files |
+| **Scheduling** | APScheduler (follow-ups) |
 | **Language** | Python 3.11+ |
 
 ---
 
-## 📝 Why I Built This
+## 📝 Known Limitations
 
-Job searching is tedious. I was:
-- ❌ Copy-pasting the same email template
-- ❌ Forgetting to follow up
-- ❌ Losing track of where I applied
-- ❌ Not tailoring emails to job descriptions
-
-**MuBot fixes this.** Now I just chat, review, and approve. The AI handles personalization, scheduling, and tracking.
+1. **Follow-ups are scheduled but not auto-sent** - You need to run `schedule_followup.py` manually
+2. **Response checking exists but isn't automated** - `check_for_replies()` in gmail_client.py isn't called
+3. **Pipeline tracking has models but no UI** - Data structures exist, interface missing
+4. **Notion integration is placeholder only** - `sync_to_notion()` just prints "not implemented"
 
 ---
 
 ## 🚧 Roadmap
 
-### v0.1 (Current) ✅
-- Basic chat interface
-- JD-enhanced email drafting
-- Automatic follow-ups
-- Pipeline tracking
-
-### v0.2 (Coming Soon)
-- [ ] LinkedIn integration
-- [ ] Web UI dashboard
-- [ ] Interview scheduling
+### v0.2 (In Progress)
+- [ ] Auto-send scheduled follow-ups
+- [ ] Auto-check for replies
+- [ ] Web UI for pipeline
 
 ### v0.3 (Future)
-- [ ] Resume tailoring
-- [ ] A/B testing templates
-- [ ] Multi-provider LLM support
+- [ ] LinkedIn company research
+- [ ] Response classification
+- [ ] A/B testing prompts
 
 ---
 
 ## 🤝 Contributing
 
-This is my personal project, but feel free to fork and customize! Open an issue if you find bugs.
+This is a personal project, but feel free to fork! Open an issue for bugs.
 
 ---
 
