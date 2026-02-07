@@ -42,14 +42,27 @@ You are writing a gentle follow-up email for a job application.
 - Include sender LinkedIn: {sender_linkedin}
 - Under 80 words total
 - Sound human, not corporate
+- NO markdown formatting - use PLAIN TEXT only
+- LinkedIn should be plain URL, NOT [LinkedIn](url)
 </rules>
 </instructions>
 
 <note>This is a reply in a Gmail thread - do NOT include a Subject line. Gmail will auto-add "Re:" prefix.</note>
 
+<example>
+Hi Tanmai,
+
+I wanted to follow up on my email from last week about the Data Scientist role. I recently completed a project that reduced model inference time by 35%.
+
+Would you be open to a quick call this week?
+
+Best,
+Muskan | +1 8574235724 | https://linkedin.com/in/muskan-khandelwal
+</example>
+
 <output>
 <email_body>
-[email with actual names, no placeholders, no subject line]
+[email with actual names, no placeholders, no subject line, NO markdown links]
 </email_body>
 </output>
 """
@@ -92,6 +105,8 @@ You are writing a brief follow-up email for a job application.
 - Include phone and LinkedIn
 - Under 60 words
 - Shorter than follow-up 1
+- NO markdown formatting - use PLAIN TEXT only
+- LinkedIn should be plain URL, NOT [LinkedIn](url)
 </rules>
 </instructions>
 
@@ -142,6 +157,8 @@ You are writing a final follow-up email for a job application.
 - Include contact info
 - Under 50 words
 - This is the LAST follow-up - be graceful
+- NO markdown formatting - use PLAIN TEXT only
+- LinkedIn should be plain URL, NOT [LinkedIn](url)
 </rules>
 </instructions>
 
@@ -152,4 +169,4 @@ You are writing a final follow-up email for a job application.
 [short graceful email, no subject line]
 </email_body>
 </output>
-""
+"""
