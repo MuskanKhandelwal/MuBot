@@ -45,10 +45,11 @@ You are writing a gentle follow-up email for a job application.
 </rules>
 </instructions>
 
+<note>This is a reply in a Gmail thread - do NOT include a Subject line. Gmail will auto-add "Re:" prefix.</note>
+
 <output>
-<subject>Following up on {role} application</subject>
 <email_body>
-[email with actual names, no placeholders]
+[email with actual names, no placeholders, no subject line]
 </email_body>
 </output>
 """
@@ -94,10 +95,11 @@ You are writing a brief follow-up email for a job application.
 </rules>
 </instructions>
 
+<note>This is a reply in a Gmail thread - do NOT include a Subject line.</note>
+
 <output>
-<subject>Quick check-in: {role}</subject>
 <email_body>
-[brief email with actual names]
+[brief email with actual names, no subject line]
 </email_body>
 </output>
 """
@@ -143,10 +145,11 @@ You are writing a final follow-up email for a job application.
 </rules>
 </instructions>
 
+<note>This is a reply in a Gmail thread - do NOT include a Subject line.</note>
+
 <output>
-<subject>Final follow-up: {role}</subject>
 <email_body>
-[short graceful email]
+[short graceful email, no subject line]
 </email_body>
 </output>
-"""
+""

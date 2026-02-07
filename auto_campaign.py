@@ -386,19 +386,18 @@ class AutomatedCampaign:
                 sender_linkedin=sender_linkedin
             )
             
-            # Parse subject and body from response
-            followup_lines = followup_response.split('\n')
-            followup_subject = f"Re: {role}"
-            followup_body = followup_response
+            # Follow-ups are replies in thread - no subject needed
+            # Gmail will auto-add "Re: original_subject" when thread_id is provided
+            followup_body = followup_response.strip()
             
-            # Extract subject if present
+            # Remove any subject line if present (follow-ups don't need subject as replies)
+            followup_lines = followup_body.split('\n')
             for i, line in enumerate(followup_lines):
                 if line.lower().startswith('subject:'):
-                    followup_subject = line.split(':', 1)[1].strip()
                     followup_body = '\n'.join(followup_lines[i+1:]).strip()
                     break
             
-            # Fallback: Replace any remaining placeholders (shouldn't happen with new prompts)
+            # Fallback: Replace any remaining placeholders
             followup_body = followup_body.replace('[Recipient\'s Name]', recipient_name)
             followup_body = followup_body.replace('[Hiring Manager\'s Name]', recipient_name)
             followup_body = followup_body.replace('[Hiring Manager]', recipient_name)
@@ -407,9 +406,8 @@ class AutomatedCampaign:
             followup_body = followup_body.replace('[Your Contact Information]', 
                 f"{sender_name} | {sender_phone} | {sender_linkedin}" if sender_phone and sender_linkedin else sender_name)
             
-            # Show preview
-            print(f"      Subject: {followup_subject}")
-            print(f"      Body: {followup_body[:100]}...")
+            # Show preview (no subject for thread replies)
+            print(f"      Body preview: {followup_body[:100]}...")
             
             # Confirm send
             confirm = input(f"      Send this {followup_name}? (yes/no): ").strip().lower()
@@ -427,9 +425,10 @@ class AutomatedCampaign:
                 # Get thread_id for replying in same thread
                 thread_id = task.get('thread_id')
                 
+                # For thread replies, no subject needed - Gmail auto-adds "Re: original"
                 result = await gmail.send_email(
                     to=email,
-                    subject=followup_subject,
+                    subject="",  # Empty - Gmail handles "Re:" automatically in thread
                     body=followup_body.replace('\n', '<br>'),
                     thread_id=thread_id,  # Reply in same thread
                     apply_label=True
