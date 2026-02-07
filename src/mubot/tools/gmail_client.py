@@ -238,12 +238,14 @@ class GmailClient:
             ).execute()
             
             message_id = result.get("id")
+            thread_id = result.get("threadId")
             
             # Apply label if requested
             if apply_label and message_id:
                 await self.apply_label(message_id, OUTREACH_LABELS["sent"])
             
-            return message_id
+            # Return both message_id and thread_id
+            return {"message_id": message_id, "thread_id": thread_id}
             
         except HttpError as e:
             print(f"Error sending email: {e}")

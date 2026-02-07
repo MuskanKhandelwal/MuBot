@@ -213,7 +213,7 @@ class AutomatedCampaign:
             await self._update_job_status(job, f"Error: {str(e)[:50]}")
     
     async def _schedule_followups(self, draft, job: dict):
-        """Schedule the 3 follow-ups."""
+        """Schedule the 3 follow-ups with JD and thread_id."""
         print("\n   📅 Scheduling follow-ups...")
         
         now = datetime.utcnow()
@@ -236,12 +236,18 @@ class AutomatedCampaign:
         # Store in heartbeat state
         state = self.agent.memory.load_heartbeat_state()
         
+        # Get job description from job
+        job_description = job.get('job_description', '') or job.get('Job Description', '')
+        
         for date, name in followups:
             state.scheduled_followups.append({
                 "entry_id": draft.id,
                 "company": job['company'],
                 "role": job['role'],
                 "email": draft.recipient_email,
+                "recipient_name": draft.recipient_name or "Hiring Manager",
+                "job_description": job_description,
+                "thread_id": draft.gmail_thread_id,  # For replying in same thread
                 "due_at": date.isoformat(),
                 "followup_name": name,
                 "sent": False
@@ -353,12 +359,16 @@ class AutomatedCampaign:
                 followup_count=followup_num - 1,
             )
             
-            # Draft follow-up
+            # Get job description for context
+            job_description = task.get('job_description', '')
+            
+            # Draft follow-up (with JD context)
             print(f"      📝 Drafting {followup_name}...")
             
             followup_response = await self.agent.reasoning.draft_followup(
                 original_entry=original_entry,
-                days_elapsed=4 if followup_num == 1 else (8 if followup_num == 2 else 10)
+                days_elapsed=4 if followup_num == 1 else (8 if followup_num == 2 else 10),
+                job_description=job_description
             )
             
             # Parse subject and body from response
@@ -387,7 +397,7 @@ class AutomatedCampaign:
             confirm = input(f"      Send this {followup_name}? (yes/no): ").strip().lower()
             
             if confirm == "yes":
-                # Send via Gmail
+                # Send via Gmail (in same thread as original)
                 from mubot.tools.gmail_client import GmailClient
                 gmail = GmailClient(self.agent.settings)
                 authenticated = await gmail.authenticate()
@@ -396,15 +406,21 @@ class AutomatedCampaign:
                     print("      ❌ Gmail authentication failed")
                     return False
                 
-                message_id = await gmail.send_email(
+                # Get thread_id for replying in same thread
+                thread_id = task.get('thread_id')
+                
+                result = await gmail.send_email(
                     to=email,
                     subject=followup_subject,
                     body=followup_body.replace('\n', '<br>'),
+                    thread_id=thread_id,  # Reply in same thread
                     apply_label=True
                 )
                 
-                if message_id:
+                if result and result.get('message_id'):
                     print(f"      ✅ {followup_name} sent successfully!")
+                    if thread_id:
+                        print(f"      📎 Replied in thread: {thread_id[:20]}...")
                     return True
                 else:
                     print(f"      ❌ Failed to send")
