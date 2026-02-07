@@ -368,13 +368,22 @@ class AutomatedCampaign:
             # Get job description for context
             job_description = task.get('job_description', '')
             
-            # Draft follow-up (with JD context)
+            # Get sender info
+            sender_name = self.agent.user_profile.name if self.agent.user_profile else 'Muskan'
+            sender_phone = self.agent.user_profile.phone if self.agent.user_profile and self.agent.user_profile.phone else ''
+            sender_linkedin = self.agent.user_profile.linkedin_url if self.agent.user_profile and self.agent.user_profile.linkedin_url else ''
+            
+            # Draft follow-up (with JD context and actual names)
             print(f"      📝 Drafting {followup_name}...")
             
             followup_response = await self.agent.reasoning.draft_followup(
                 original_entry=original_entry,
                 days_elapsed=4 if followup_num == 1 else (8 if followup_num == 2 else 10),
-                job_description=job_description
+                job_description=job_description,
+                recipient_name=recipient_name,
+                sender_name=sender_name,
+                sender_phone=sender_phone,
+                sender_linkedin=sender_linkedin
             )
             
             # Parse subject and body from response
@@ -389,21 +398,14 @@ class AutomatedCampaign:
                     followup_body = '\n'.join(followup_lines[i+1:]).strip()
                     break
             
-            # Replace placeholders with actual names
+            # Fallback: Replace any remaining placeholders (shouldn't happen with new prompts)
             followup_body = followup_body.replace('[Recipient\'s Name]', recipient_name)
             followup_body = followup_body.replace('[Hiring Manager\'s Name]', recipient_name)
+            followup_body = followup_body.replace('[Hiring Manager]', recipient_name)
             followup_body = followup_body.replace('[Name]', recipient_name)
-            followup_body = followup_body.replace('[Your Name]', sender_name.split()[0])  # First name
-            
-            # Build contact info line
-            contact_info = sender_name
-            if self.agent.user_profile:
-                if self.agent.user_profile.phone:
-                    contact_info += f" | {self.agent.user_profile.phone}"
-                if self.agent.user_profile.linkedin_url:
-                    contact_info += f" | {self.agent.user_profile.linkedin_url}"
-            
-            followup_body = followup_body.replace('[Your Contact Information]', contact_info)
+            followup_body = followup_body.replace('[Your Name]', sender_name.split()[0] if sender_name else 'Muskan')
+            followup_body = followup_body.replace('[Your Contact Information]', 
+                f"{sender_name} | {sender_phone} | {sender_linkedin}" if sender_phone and sender_linkedin else sender_name)
             
             # Show preview
             print(f"      Subject: {followup_subject}")
