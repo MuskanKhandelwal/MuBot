@@ -336,13 +336,17 @@ class AutomatedCampaign:
                 followup_num = 3
                 tone = "final follow-up"
             
+            # Get names for personalization
+            recipient_name = task.get('recipient_name', 'Hiring Manager')
+            sender_name = self.agent.user_profile.name if self.agent.user_profile else 'Muskan'
+            
             # Create a minimal entry for follow-up generation
             original_entry = OutreachEntry(
                 id=task.get('entry_id', 'unknown'),
                 company_name=company,
                 role_title=role,
                 recipient_email=email,
-                recipient_name="",
+                recipient_name=recipient_name,
                 subject=f"Re: {role} at {company}",
                 body="",
                 status=OutreachStatus.SENT,
@@ -368,6 +372,12 @@ class AutomatedCampaign:
                     followup_subject = line.split(':', 1)[1].strip()
                     followup_body = '\n'.join(followup_lines[i+1:]).strip()
                     break
+            
+            # Replace placeholders with actual names
+            followup_body = followup_body.replace('[Recipient\'s Name]', recipient_name)
+            followup_body = followup_body.replace('[Your Name]', sender_name.split()[0])  # First name
+            followup_body = followup_body.replace('[Your Contact Information]', 
+                f"{sender_name} | {self.agent.user_profile.phone if self.agent.user_profile and self.agent.user_profile.phone else ''}")
             
             # Show preview
             print(f"      Subject: {followup_subject}")
