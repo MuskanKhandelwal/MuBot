@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     )
     
     max_daily_emails: int = Field(
-        default=20,
+        default=60,
         ge=1,
         le=100,
         description="Maximum emails to send per day (safety limit)",

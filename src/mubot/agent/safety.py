@@ -17,7 +17,7 @@ they are executed, returning detailed results about any violations.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
@@ -178,7 +178,14 @@ class SafetyGuardrails:
         
         # Check minimum interval since last contact
         if last_contact_date:
-            days_since = (datetime.utcnow() - last_contact_date).days
+            # Handle both naive and timezone-aware datetimes
+            now = datetime.now(timezone.utc)
+            if last_contact_date.tzinfo is None:
+                # Naive datetime - assume UTC
+                last_contact_aware = last_contact_date.replace(tzinfo=timezone.utc)
+            else:
+                last_contact_aware = last_contact_date
+            days_since = (now - last_contact_aware).days
             min_days = 3 if followup_count == 0 else 5
             
             if days_since < min_days:
@@ -314,7 +321,14 @@ class SafetyGuardrails:
         state = self.memory.load_heartbeat_state()
         
         if state.last_send_timestamp:
-            elapsed = (datetime.utcnow() - state.last_send_timestamp).total_seconds()
+            # Handle both naive and timezone-aware datetimes
+            now = datetime.now(timezone.utc)
+            if state.last_send_timestamp.tzinfo is None:
+                # Naive datetime - assume UTC
+                last_send_aware = state.last_send_timestamp.replace(tzinfo=timezone.utc)
+            else:
+                last_send_aware = state.last_send_timestamp
+            elapsed = (now - last_send_aware).total_seconds()
             
             if elapsed < self.min_interval_seconds:
                 wait_time = self.min_interval_seconds - elapsed

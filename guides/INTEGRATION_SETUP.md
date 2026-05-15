@@ -203,6 +203,16 @@ python auto_campaign.py --source sheets --limit 5
 python auto_campaign.py --followups-only
 ```
 
+### Check for Replies (Automated Response Tracking)
+
+```bash
+# Check for replies once
+python auto_campaign.py --check-replies
+
+# Or use the standalone script
+python scripts/schedule_replies.py
+```
+
 ---
 
 ## 📅 Scheduling Automatic Runs
@@ -214,12 +224,22 @@ python auto_campaign.py --followups-only
 crontab -e
 
 # Add these lines:
-# Run every weekday at 9 AM
+
+# 1. Check for replies every hour (automated response tracking)
+# This cancels follow-ups when people reply
+0 * * * * cd /path/to/mubot && python auto_campaign.py --check-replies >> /path/to/mubot/logs/replies.log 2>&1
+
+# 2. Run campaign every weekday at 9 AM (send pending emails)
 0 9 * * 1-5 cd /path/to/mubot && python auto_campaign.py --source sheets --limit 3 >> /path/to/mubot/logs/campaign.log 2>&1
 
-# Run follow-ups check at 10 AM
+# 3. Send due follow-ups at 10 AM
 0 10 * * 1-5 cd /path/to/mubot && python auto_campaign.py --followups-only >> /path/to/mubot/logs/followups.log 2>&1
 ```
+
+**What this does:**
+1. **Hourly**: Checks Gmail for replies → Auto-cancels follow-ups for respondents
+2. **9 AM**: Sends pending initial emails from your sheet
+3. **10 AM**: Sends due follow-ups (only if no reply received)
 
 ### Using launchd (Mac alternative)
 

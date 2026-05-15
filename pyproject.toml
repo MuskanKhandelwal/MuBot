@@ -31,6 +31,7 @@ keywords = ["ai", "agent", "job-search", "cold-email", "gmail", "automation"]
 dependencies = [
     # Agent and AI framework - provides the LLM interface and tool calling
     "openai>=1.0.0",
+    "anthropic>=0.40.0",
     
     # Vector store for RAG - enables semantic search over past emails
     "chromadb>=0.4.0",

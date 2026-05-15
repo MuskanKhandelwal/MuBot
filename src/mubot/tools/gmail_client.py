@@ -110,9 +110,15 @@ class GmailClient:
         # If no valid credentials, get them
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                # Refresh expired token
-                creds.refresh(Request())
-            else:
+                try:
+                    # Refresh expired token
+                    creds.refresh(Request())
+                except Exception as e:
+                    print(f"⚠️  Token refresh failed: {e}")
+                    print("🔄 Falling back to OAuth flow...")
+                    creds = None  # Force re-authentication
+            
+            if not creds:
                 # Need to run OAuth flow
                 if not self.credentials_path.exists():
                     raise FileNotFoundError(
@@ -522,9 +528,11 @@ class GmailClient:
             headers = message.get("payload", {}).get("headers", [])
             header_dict = {h["name"].lower(): h["value"] for h in headers}
             
-            # Extract body
+            # Extract body, fall back to snippet if empty
             body = self._extract_body(message.get("payload", {}))
-            
+            if not body.strip():
+                body = message.get("snippet", "")
+
             return {
                 "id": message["id"],
                 "threadId": message["threadId"],
@@ -542,28 +550,27 @@ class GmailClient:
             return None
     
     def _extract_body(self, payload: dict) -> str:
-        """
-        Extract the message body from payload.
-        
-        Handles both single-part and multi-part messages.
-        """
-        if "body" in payload and payload["body"].get("data"):
-            # Single part
-            data = payload["body"]["data"]
-            return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-        
-        if "parts" in payload:
-            # Multi-part: find text or html
-            for part in payload["parts"]:
-                mime_type = part.get("mimeType", "")
-                if mime_type == "text/plain" and part.get("body", {}).get("data"):
-                    data = part["body"]["data"]
-                    return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-                elif mime_type == "text/html" and part.get("body", {}).get("data"):
-                    data = part["body"]["data"]
-                    html = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-                    return self._html_to_text(html)
-        
+        """Extract body from payload, recursing into nested multipart structures."""
+        plain = self._find_part(payload, "text/plain")
+        if plain:
+            return plain
+        html = self._find_part(payload, "text/html")
+        if html:
+            return self._html_to_text(html)
+        return ""
+
+    def _find_part(self, payload: dict, mime_type: str) -> str:
+        """Recursively search payload parts for a specific MIME type."""
+        if payload.get("mimeType") == mime_type:
+            data = payload.get("body", {}).get("data")
+            if data:
+                return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+
+        for part in payload.get("parts", []):
+            result = self._find_part(part, mime_type)
+            if result:
+                return result
+
         return ""
     
     def _html_to_text(self, html: str) -> str:

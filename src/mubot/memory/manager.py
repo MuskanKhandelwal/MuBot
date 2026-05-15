@@ -18,7 +18,7 @@ Key Responsibilities:
 5. Update memory based on outcomes
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -123,6 +123,9 @@ class MemoryManager:
             # Section headers
             if line.startswith("## "):
                 current_section = line[3:].lower().replace(" ", "_")
+            elif line.startswith("### "):
+                # Subsection headers (e.g., ### Resume Versions)
+                current_section = line[4:].lower().replace(" ", "_")
             
             # Identity fields
             elif "**Name**:" in line:
@@ -157,6 +160,36 @@ class MemoryManager:
                 if path_str and path_str != "[optional]":
                     from pathlib import Path
                     data["resume_path"] = Path(path_str)
+            
+            # Resume Versions (new format)
+            elif current_section == "resume_versions" and line.startswith("-"):
+                # Parse format: "- **Role**: /path/to/resume.pdf"
+                if "**" in line and ":" in line:
+                    parts = line.split(":", 1)
+                    role_part = parts[0].strip()
+                    path_part = parts[1].strip() if len(parts) > 1 else ""
+
+                    # Extract role name between **
+                    if "**" in role_part:
+                        role = role_part.replace("**", "").replace("-", "").strip().lower().replace(" ", "_")
+                        if path_part and not path_part.startswith("["):
+                            from pathlib import Path
+                            if "resume_versions" not in data:
+                                data["resume_versions"] = {}
+                            data["resume_versions"][role] = Path(path_part)
+
+            # Skills by Role (new format)
+            elif current_section == "skills_by_role" and line.startswith("-"):
+                # Parse format: "- **Role**: skill1, skill2, skill3"
+                if "**" in line and ":" in line:
+                    parts = line.split(":", 1)
+                    role_part = parts[0].strip()
+                    skills_part = parts[1].strip() if len(parts) > 1 else ""
+                    if "**" in role_part and skills_part:
+                        role = role_part.replace("**", "").replace("-", "").strip().lower().replace(" ", "_")
+                        if "skills_by_role" not in data:
+                            data["skills_by_role"] = {}
+                        data["skills_by_role"][role] = [s.strip() for s in skills_part.split(",")]
             
             # Links
             elif "**LinkedIn**:" in line:
@@ -236,24 +269,36 @@ class MemoryManager:
     
     def get_company_history(self, company_name: str) -> CompanyHistory:
         """
-        Retrieve or create history for a specific company.
-        
-        This aggregates all outreach to a company to prevent duplicate
-        contacts and inform personalization.
-        
+        Retrieve history for a specific company from heartbeat state.
+
         Args:
             company_name: Company name to look up
-        
+
         Returns:
-            CompanyHistory object (creates new if not exists)
+            CompanyHistory with prior outreach counts
         """
-        # Search through memory files for entries with this company
-        # This is a simplified implementation - in production, you might
-        # want to maintain an index for faster lookups
         history = CompanyHistory(company_name=company_name)
-        
-        # TODO: Implement search through memory files
-        # For now, return empty history
+
+        state = self.load_heartbeat_state()
+        company_lower = company_name.lower()
+        prior = [
+            f for f in state.scheduled_followups
+            if company_lower in f.get("company", "").lower()
+        ]
+
+        if prior:
+            history.total_outreach = len({f.get("entry_id") for f in prior})
+            history.responses_received = sum(1 for f in prior if f.get("replied"))
+            due_dates = [f.get("due_at", "") for f in prior if f.get("due_at")]
+            if due_dates:
+                from datetime import timezone
+                latest = max(due_dates)
+                try:
+                    dt = datetime.fromisoformat(latest)
+                    history.last_contact_date = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    pass
+
         return history
     
     # ======================================================================
@@ -271,7 +316,7 @@ class MemoryManager:
             DailyStats object with counts
         """
         if date is None:
-            date = datetime.utcnow()
+            date = datetime.now(timezone.utc)
         
         date_str = date.strftime("%Y-%m-%d")
         
@@ -302,37 +347,46 @@ class MemoryManager:
     def load_heartbeat_state(self) -> HeartbeatState:
         """
         Load the current heartbeat state.
-        
-        The heartbeat state tracks scheduled tasks, follow-ups,
-        and rate limiting information.
-        
+
+        Prunes sent follow-ups older than 30 days on load to keep the file small.
+
         Returns:
             Current HeartbeatState (creates new if not exists)
         """
         if self._heartbeat_state is not None:
             return self._heartbeat_state
-        
+
         state = self.json_store.read_pydantic("heartbeat-state.json", HeartbeatState)
-        
+
         if state is None:
             state = HeartbeatState()
-            self.json_store.write_pydantic("heartbeat-state.json", state)
-        
+            self.json_store.write_pydantic("heartbeat-state.json", state, backup=False)
+        else:
+            # Prune sent entries older than 30 days
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            before = len(state.scheduled_followups)
+            state.scheduled_followups = [
+                f for f in state.scheduled_followups
+                if not f.get("sent") or f.get("due_at", "") > cutoff
+            ]
+            if len(state.scheduled_followups) < before:
+                self.json_store.write_pydantic("heartbeat-state.json", state, backup=False)
+
         self._heartbeat_state = state
         return state
     
     def save_heartbeat_state(self, state: HeartbeatState) -> bool:
         """
         Save the heartbeat state to disk.
-        
+
         Args:
             state: HeartbeatState to save
-        
+
         Returns:
             True if saved successfully
         """
         self._heartbeat_state = state
-        return self.json_store.write_pydantic("heartbeat-state.json", state)
+        return self.json_store.write_pydantic("heartbeat-state.json", state, backup=False)
     
     # ======================================================================
     # Query Operations
@@ -370,7 +424,7 @@ class MemoryManager:
             List of follow-up tasks with context
         """
         state = self.load_heartbeat_state()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         pending = []
         for task in state.scheduled_followups:
@@ -402,7 +456,7 @@ class MemoryManager:
         metadata, existing_content = result
         
         # Update the timestamp
-        metadata["last_updated"] = datetime.utcnow().isoformat()
+        metadata["last_updated"] = datetime.now(timezone.utc).isoformat()
         
         # TODO: Implement section replacement logic
         # For now, just append
@@ -421,7 +475,7 @@ class MemoryManager:
         Returns:
             True if logged successfully
         """
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         entry = f"- [{timestamp}] {what_worked} (Context: {context})"
         
         return self.update_memory_md("What's Working", entry)

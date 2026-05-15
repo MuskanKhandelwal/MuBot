@@ -20,15 +20,29 @@ Follow-up Schedule:
 
 import argparse
 import asyncio
+import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from mubot.agent import JobSearchAgent
-from integrations.google_sheets import GoogleSheetsIntegration, add_working_days
-from integrations.notion_integration import NotionIntegration
+from integrations.google_sheets import GoogleSheetsIntegration
+
+
+def add_working_days(start_date: datetime, working_days: int) -> datetime:
+    """Add working days (excluding weekends) to a date."""
+    current = start_date
+    days_added = 0
+    
+    while days_added < working_days:
+        current += timedelta(days=1)
+        # Skip weekends (5=Saturday, 6=Sunday)
+        if current.weekday() < 5:
+            days_added += 1
+    
+    return current
 
 
 class AutomatedCampaign:
@@ -60,6 +74,7 @@ class AutomatedCampaign:
             from mubot.config import get_settings
             settings = get_settings()
             
+            from integrations.notion_integration import NotionIntegration
             self.integration = NotionIntegration(
                 token=settings.notion_api_token or "secret_xxx",
                 database_id=settings.notion_database_id or "xxx-xxx-xxx"
@@ -110,25 +125,42 @@ class AutomatedCampaign:
         print("✅ Campaign Complete!")
         print(f"{'='*60}")
     
+    @staticmethod
+    def _parse_role(raw_role: str) -> tuple[str, str]:
+        """
+        Split 'Data Scientist II R2619158' into ('Data Scientist II', 'R2619158').
+        Returns (clean_role, job_id) where job_id is '' if none found.
+        """
+        match = re.search(r'\b([A-Z]{0,3}\d{5,10})\b', raw_role)
+        if match:
+            job_id = match.group(1)
+            clean = raw_role[:match.start()].strip().rstrip('-').strip()
+            return clean, job_id
+        return raw_role.strip(), ""
+
     async def _process_job(self, job: dict, dry_run: bool = False):
         """Process a single job."""
         company = job['company']
-        role = job['role']
+        raw_role = job['role']
+        role, job_id = self._parse_role(raw_role)
         recipient = job['recipient_name'] or "Hiring Manager"
         email = job['email']
         jd = job['job_description']
-        
+
         # Validate required fields
         if not company or not role:
             print("❌ Missing company or role. Skipping.")
             return
-        
+
         if not email:
             print("⚠️  No email provided. Will draft only.")
-        
+
         # Draft email
         print(f"📝 Drafting email for {role} at {company}...")
-        
+
+        # Select role-specific skills
+        role_skills = self.agent._select_skills_for_role(role)
+
         try:
             if jd and len(jd) > 50:
                 # Use JD-enhanced version
@@ -136,9 +168,11 @@ class AutomatedCampaign:
                     user_profile=self.agent.user_profile,
                     company_name=company,
                     role_title=role,
+                    job_reference=job_id,
                     company_context=f"{company} - innovative company",
                     job_description=jd,
-                    recipient_name=recipient
+                    recipient_name=recipient,
+                    role_skills=role_skills,
                 )
                 print("   ✓ JD-enhanced draft created")
             else:
@@ -162,32 +196,44 @@ class AutomatedCampaign:
                 print("   🏃 DRY RUN - Would send email and schedule follow-ups")
                 return
             
-            # Confirm before sending (unless in bulk mode)
-            if email:
-                if self.bulk:
-                    # Bulk mode: auto-send without confirmation
-                    print(f"   🚀 BULK MODE: Auto-sending to {email}")
-                    confirm = "yes"
+            # In bulk mode, send without confirmation
+            if self.bulk and email:
+                # Add 5-second delay before sending
+                print("   ⏱️  Waiting 5 seconds before sending...")
+                await asyncio.sleep(5)
+
+                draft.recipient_email = email
+                per_job_resume = job.get("resume", "")
+                extra_attachments = [per_job_resume] if per_job_resume else None
+                if per_job_resume:
+                    print(f"   📎 Using custom resume: {per_job_resume}")
+                success, msg = await self.agent.send_email(draft, approved=True, attachments=extra_attachments)
+                
+                if success:
+                    print(f"   ✅ {msg}")
+                    
+                    # Schedule follow-ups
+                    await self._schedule_followups(draft, job)
+                    
+                    # Update status in source
+                    await self._update_job_status(job, "Sent")
                 else:
-                    confirm = input(f"   Send to {email}? (yes/no/skip): ").strip().lower()
+                    print(f"   ❌ Failed: {msg}")
+                    await self._update_job_status(job, "Send Failed")
+                return
+            
+            # Confirm before sending (interactive mode)
+            if email:
+                confirm = input(f"   Send to {email}? (yes/no/skip): ").strip().lower()
                 
                 if confirm == "skip":
                     print("   ⏭️  Skipping this job")
                     return
                 
                 if confirm == "yes":
-                    # Send email with resume attachment if available
+                    # Send email
                     draft.recipient_email = email
-                    
-                    # Get resume path from user profile
-                    resume_attachments = None
-                    if self.agent.user_profile and self.agent.user_profile.resume_path:
-                        resume_attachments = [str(self.agent.user_profile.resume_path)]
-                        print(f"   📎 Attaching: {self.agent.user_profile.resume_path.name}")
-                    
-                    success, msg = await self.agent.send_email(
-                        draft, approved=True, attachments=resume_attachments
-                    )
+                    success, msg = await self.agent.send_email(draft, approved=True)
                     
                     if success:
                         print(f"   ✅ {msg}")
@@ -197,12 +243,6 @@ class AutomatedCampaign:
                         
                         # Update status in source
                         await self._update_job_status(job, "Sent")
-                        
-                        # Bulk mode: add delay before next email
-                        if self.bulk:
-                            print("   ⏱️  Waiting 5 seconds before next email...")
-                            import asyncio
-                            await asyncio.sleep(5)
                     else:
                         print(f"   ❌ Failed: {msg}")
                         await self._update_job_status(job, "Send Failed")
@@ -219,10 +259,10 @@ class AutomatedCampaign:
             await self._update_job_status(job, f"Error: {str(e)[:50]}")
     
     async def _schedule_followups(self, draft, job: dict):
-        """Schedule the 3 follow-ups with JD and thread_id."""
+        """Schedule the 3 follow-ups."""
         print("\n   📅 Scheduling follow-ups...")
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         # Calculate working days
         followup_1 = add_working_days(now, 4)   # 4 working days
@@ -242,21 +282,20 @@ class AutomatedCampaign:
         # Store in heartbeat state
         state = self.agent.memory.load_heartbeat_state()
         
-        # Get job description from job
-        job_description = job.get('job_description', '') or job.get('Job Description', '')
-        
         for date, name in followups:
             state.scheduled_followups.append({
                 "entry_id": draft.id,
                 "company": job['company'],
                 "role": job['role'],
                 "email": draft.recipient_email,
-                "recipient_name": draft.recipient_name or "Hiring Manager",
-                "job_description": job_description,
-                "thread_id": draft.gmail_thread_id,  # For replying in same thread
+                "recipient_name": draft.recipient_name or job.get('recipient_name') or "Hiring Manager",
+                "thread_id": draft.gmail_thread_id,  # Store thread_id for replies
+                "job_description": job.get('job_description', ''),  # Store JD for follow-up context
                 "due_at": date.isoformat(),
                 "followup_name": name,
-                "sent": False
+                "sent": False,
+                "row_number": job.get('row_number'),  # Store for sheet updates
+                "job_description": job.get('job_description', '')[:300]  # Brief context only
             })
         
         self.agent.memory.save_heartbeat_state(state)
@@ -269,38 +308,202 @@ class AutomatedCampaign:
                 await self.integration.update_job_status(
                     job.get('row_number', 0),
                     status,
-                    datetime.utcnow()
+                    datetime.now(timezone.utc)
                 )
             elif self.source == "notion":
                 await self.integration.update_job_status(
                     job.get('page_id', ''),
                     status,
-                    datetime.utcnow()
+                    datetime.now(timezone.utc)
                 )
         except Exception as e:
             print(f"   ⚠️  Could not update status: {e}")
     
-    async def run_pending_followups(self, dry_run: bool = False):
+    async def _update_followup_status(self, task: dict, followup_name: str):
+        """Update Google Sheet status after sending a follow-up."""
+        row_number = task.get('row_number')
+        if not row_number:
+            print(f"   ⚠️  Cannot update sheet: row_number not found in task")
+            return
+        
+        # Determine status based on follow-up number
+        if '1' in followup_name:
+            status = "FU1 Sent"
+            fu_count = 1
+        elif '2' in followup_name:
+            status = "FU2 Sent"
+            fu_count = 2
+        elif '3' in followup_name:
+            status = "FU3 Sent"
+            fu_count = 3
+        else:
+            status = "Follow-up Sent"
+            fu_count = 1
+        
+        try:
+            if self.source == "sheets":
+                # Update status column
+                await self.integration.update_job_status(
+                    row_number,
+                    status,
+                    datetime.now(timezone.utc)
+                )
+                # Update follow-up count column
+                await self.integration.update_followup_count(row_number, fu_count)
+                print(f"   ✅ Sheet updated: {status}")
+            elif self.source == "notion":
+                # Notion update logic if needed
+                pass
+        except Exception as e:
+            print(f"   ⚠️  Could not update sheet: {e}")
+    
+    async def check_for_replies(self):
+        """Check Gmail for replies and auto-cancel follow-ups."""
+        from mubot.tools.gmail_client import GmailClient
+        from mubot.memory.models import OutreachEntry, OutreachStatus
+        
+        # Check if we have any follow-ups to check
+        state = self.agent.memory.load_heartbeat_state()
+        unsent_followups = [f for f in state.scheduled_followups if not f.get('sent', False)]
+        
+        if not unsent_followups:
+            print("✅ No pending follow-ups to check")
+            return
+        
+        print(f"📬 Checking {len(unsent_followups)} unsent follow-ups for replies...")
+        
+        # Authenticate Gmail
+        gmail = GmailClient(self.agent.settings)
+        authenticated = await gmail.authenticate()
+        
+        if not authenticated:
+            print("❌ Gmail authentication failed")
+            return
+        
+        replies_found = 0
+        followups_cancelled = 0
+        processed_threads = set()
+        
+        # Check follow-ups with thread_ids
+        followups_with_threads = [f for f in unsent_followups if f.get('thread_id')]
+        print(f"   Checking {len(followups_with_threads)} threads...")
+        
+        for followup in followups_with_threads:
+            thread_id = followup.get('thread_id')
+            company = followup.get('company', 'Unknown')
+            
+            if thread_id in processed_threads:
+                continue
+            processed_threads.add(thread_id)
+            
+            try:
+                # Get messages in thread
+                messages = await gmail.get_replies(thread_id)
+                
+                if len(messages) > 1:
+                    # Filter to only incoming messages
+                    sender_email = self.agent.user_profile.email if self.agent.user_profile else ""
+                    incoming = [
+                        m for m in messages 
+                        if sender_email not in m.get('from', '')
+                    ]
+                    
+                    if incoming:
+                        reply = incoming[-1]
+                        replies_found += 1
+                        
+                        print(f"\n   📨 Reply from {company}!")
+                        print(f"      From: {reply.get('from', 'Unknown')}")
+                        print(f"      Subject: {reply.get('subject', 'No subject')}")
+                        preview = reply.get('body', '')[:100].replace('\n', ' ')
+                        print(f"      Preview: {preview}...")
+                        
+                        # Create entry and process response
+                        entry = OutreachEntry(
+                            id=followup.get('entry_id', f"temp-{thread_id}"),
+                            company_name=company,
+                            role_title=followup.get('role', 'Role'),
+                            recipient_email=followup.get('email', ''),
+                            recipient_name=followup.get('recipient_name', 'Hiring Manager'),
+                            subject=reply.get('subject', f"Re: {followup.get('role', 'Role')}"),
+                            body="",
+                            status=OutreachStatus.SENT,
+                            gmail_thread_id=thread_id,
+                        )
+                        
+                        try:
+                            category, data = await self.agent.process_response(
+                                entry, response_body=reply.get('body', '')
+                            )
+                            print(f"      ✅ Response: {category.value}")
+                            followups_cancelled += 1
+                            
+                            # Apply label
+                            await gmail.apply_label(reply.get('id'), "outreach/replied")
+                            
+                            # Update sheet status to "Replied"
+                            row_number = followup.get('row_number')
+                            if row_number and self.source == "sheets":
+                                await self.integration.update_job_status(
+                                    row_number, "Replied", datetime.now(timezone.utc)
+                                )
+                                print(f"      ✅ Sheet updated: Replied")
+                            
+                        except Exception as e:
+                            print(f"      ⚠️  Error processing: {e}")
+                            # Still cancel follow-ups
+                            state.scheduled_followups = [
+                                f for f in state.scheduled_followups 
+                                if f.get('thread_id') != thread_id
+                            ]
+                            self.agent.memory.save_heartbeat_state(state)
+                            followups_cancelled += 1
+                            
+            except Exception as e:
+                print(f"   ⚠️  Error checking {company}: {e}")
+                continue
+        
+        print(f"\n{'='*60}")
+        print("📊 Reply Check Complete")
+        print(f"   Replies found: {replies_found}")
+        print(f"   Follow-ups cancelled: {followups_cancelled}")
+        print(f"{'='*60}")
+    
+    async def run_pending_followups(self, dry_run: bool = False, limit: int = None):
         """Check and send any due follow-ups."""
         print(f"\n{'='*60}")
         print("📅 Checking Pending Follow-ups")
         print(f"{'='*60}\n")
         
         state = self.agent.memory.load_heartbeat_state()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         due_followups = []
         for task in state.scheduled_followups:
             if task.get('sent'):
                 continue
             
-            due_at = datetime.fromisoformat(task.get('due_at', '').replace('Z', '+00:00'))
-            if due_at <= now:
-                due_followups.append(task)
+            due_at_str = task.get('due_at', '')
+            try:
+                # Handle both timezone-aware and naive datetimes
+                if due_at_str.endswith('Z'):
+                    due_at = datetime.fromisoformat(due_at_str.replace('Z', '+00:00'))
+                elif '+' in due_at_str or '-' in due_at_str[-6:]:
+                    due_at = datetime.fromisoformat(due_at_str)
+                else:
+                    due_at = datetime.fromisoformat(due_at_str).replace(tzinfo=timezone.utc)
+                
+                if due_at <= now:
+                    due_followups.append(task)
+            except (ValueError, TypeError):
+                continue
         
         if not due_followups:
             print("✅ No follow-ups due today")
             return
+        
+        if limit:
+            due_followups = due_followups[:limit]
         
         print(f"📧 {len(due_followups)} follow-ups due:\n")
         
@@ -315,13 +518,30 @@ class AutomatedCampaign:
                 print("      🏃 DRY RUN - Would send\n")
                 continue
             
-            confirm = input("      Send now? (yes/no): ").strip().lower()
-            
-            if confirm == "yes" and email:
-                # Draft and send follow-up
+            # In bulk mode, send without confirmation
+            if self.bulk and email:
+                # Add 5-second delay before sending
+                print("      ⏱️  Waiting 5 seconds before sending...")
+                await asyncio.sleep(5)
+                
                 success = await self._send_followup_email(task, name)
                 if success:
                     task['sent'] = True
+                    # Update sheet status
+                    await self._update_followup_status(task, name)
+                # Add small delay after send before next
+                await asyncio.sleep(2)
+                continue
+            
+            # Interactive mode
+            confirm = input("      Send now? (yes/no): ").strip().lower()
+            
+            if confirm == "yes" and email:
+                success = await self._send_followup_email(task, name)
+                if success:
+                    task['sent'] = True
+                    # Update sheet status
+                    await self._update_followup_status(task, name)
             else:
                 print(f"      ❌ Skipped\n")
         
@@ -332,79 +552,72 @@ class AutomatedCampaign:
         """Draft and send a follow-up email."""
         try:
             from mubot.memory.models import OutreachEntry, OutreachStatus
+            from mubot.tools.gmail_client import GmailClient
             
             company = task.get('company', 'Unknown')
             role = task.get('role', 'Role')
             email = task.get('email', '')
+            entry_id = task.get('entry_id', 'unknown')
             
-            # Determine follow-up number and tone
+            # Determine follow-up number
             if '1' in followup_name:
                 followup_num = 1
-                tone = "gentle reminder"
             elif '2' in followup_name:
                 followup_num = 2
-                tone = "adding value"
             else:
                 followup_num = 3
-                tone = "final follow-up"
-            
-            # Get names for personalization
-            recipient_name = task.get('recipient_name', 'Hiring Manager')
-            sender_name = self.agent.user_profile.name if self.agent.user_profile else 'Muskan'
             
             # Create a minimal entry for follow-up generation
             original_entry = OutreachEntry(
-                id=task.get('entry_id', 'unknown'),
+                id=entry_id,
                 company_name=company,
                 role_title=role,
                 recipient_email=email,
-                recipient_name=recipient_name,
-                subject=f"Re: {role} at {company}",
-                body="",
+                recipient_name=task.get('recipient_name', ''),
+                subject=f"Re: {role}",
+                body=task.get('original_body', ''),
                 status=OutreachStatus.SENT,
                 followup_count=followup_num - 1,
             )
             
-            # Get job description for context
-            job_description = task.get('job_description', '')
-            
-            # Draft follow-up (with JD context)
+            # Draft follow-up
             print(f"      📝 Drafting {followup_name}...")
             
-            followup_response = await self.agent.reasoning.draft_followup(
+            # Get user profile info for sender details
+            sender_name = self.agent.user_profile.name if self.agent.user_profile else "Muskan"
+            sender_phone = self.agent.user_profile.phone if self.agent.user_profile else ""
+            sender_linkedin = self.agent.user_profile.linkedin_url if self.agent.user_profile else ""
+            
+            # Get job description if available
+            job_description = task.get('job_description', '')
+            
+            followup_body = await self.agent.reasoning.draft_followup(
                 original_entry=original_entry,
                 days_elapsed=4 if followup_num == 1 else (8 if followup_num == 2 else 10),
-                job_description=job_description
+                job_description=job_description,
+                recipient_name=task.get('recipient_name', 'Hiring Manager'),
+                sender_name=sender_name,
+                sender_phone=sender_phone,
+                sender_linkedin=sender_linkedin,
             )
             
             # Parse subject and body from response
-            followup_lines = followup_response.split('\n')
-            followup_subject = f"Re: {role}"
-            followup_body = followup_response
+            subject = f"Re: {role}"
+            body = followup_body
             
-            # Extract subject if present
-            for i, line in enumerate(followup_lines):
-                if line.lower().startswith('subject:'):
-                    followup_subject = line.split(':', 1)[1].strip()
-                    followup_body = '\n'.join(followup_lines[i+1:]).strip()
-                    break
-            
-            # Replace placeholders with actual names
-            followup_body = followup_body.replace('[Recipient\'s Name]', recipient_name)
-            followup_body = followup_body.replace('[Your Name]', sender_name.split()[0])  # First name
-            followup_body = followup_body.replace('[Your Contact Information]', 
-                f"{sender_name} | {self.agent.user_profile.phone if self.agent.user_profile and self.agent.user_profile.phone else ''}")
+            # Try to extract subject if specified in response
+            if followup_body.startswith("Subject:"):
+                lines = followup_body.split('\n', 1)
+                subject = lines[0].replace("Subject:", "").strip()
+                body = lines[1].strip() if len(lines) > 1 else ""
             
             # Show preview
-            print(f"      Subject: {followup_subject}")
-            print(f"      Body: {followup_body[:100]}...")
+            print(f"      Subject: {subject}")
+            print(f"      Body: {body[:100]}...")
             
-            # Confirm send
-            confirm = input(f"      Send this {followup_name}? (yes/no): ").strip().lower()
-            
-            if confirm == "yes":
-                # Send via Gmail (in same thread as original)
-                from mubot.tools.gmail_client import GmailClient
+            # In bulk mode, send without confirmation
+            if self.bulk:
+                # Send via Gmail
                 gmail = GmailClient(self.agent.settings)
                 authenticated = await gmail.authenticate()
                 
@@ -412,21 +625,48 @@ class AutomatedCampaign:
                     print("      ❌ Gmail authentication failed")
                     return False
                 
-                # Get thread_id for replying in same thread
+                # Get thread ID if available
                 thread_id = task.get('thread_id')
                 
                 result = await gmail.send_email(
                     to=email,
-                    subject=followup_subject,
-                    body=followup_body.replace('\n', '<br>'),
-                    thread_id=thread_id,  # Reply in same thread
+                    subject=subject,
+                    body=body.replace('\n', '<br>'),
+                    thread_id=thread_id,
                     apply_label=True
                 )
                 
-                if result and result.get('message_id'):
+                if result:
                     print(f"      ✅ {followup_name} sent successfully!")
-                    if thread_id:
-                        print(f"      📎 Replied in thread: {thread_id[:20]}...")
+                    return True
+                else:
+                    print(f"      ❌ Failed to send")
+                    return False
+            
+            # Interactive mode - ask for confirmation
+            confirm = input(f"      Send this {followup_name}? (yes/no): ").strip().lower()
+            
+            if confirm == "yes":
+                # Send via Gmail
+                gmail = GmailClient(self.agent.settings)
+                authenticated = await gmail.authenticate()
+                
+                if not authenticated:
+                    print("      ❌ Gmail authentication failed")
+                    return False
+                
+                thread_id = task.get('thread_id')
+                
+                result = await gmail.send_email(
+                    to=email,
+                    subject=subject,
+                    body=body.replace('\n', '<br>'),
+                    thread_id=thread_id,
+                    apply_label=True
+                )
+                
+                if result:
+                    print(f"      ✅ {followup_name} sent successfully!")
                     return True
                 else:
                     print(f"      ❌ Failed to send")
@@ -437,6 +677,8 @@ class AutomatedCampaign:
                 
         except Exception as e:
             print(f"      ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
 
@@ -470,7 +712,12 @@ def main():
     parser.add_argument(
         "--bulk",
         action="store_true",
-        help="Bulk mode - send emails without confirmation prompts"
+        help="Bulk mode - no confirmations"
+    )
+    parser.add_argument(
+        "--check-replies",
+        action="store_true",
+        help="Check Gmail for replies and cancel follow-ups (automated response tracking)"
     )
     
     args = parser.parse_args()
@@ -478,6 +725,13 @@ def main():
     async def run():
         campaign = AutomatedCampaign(source=args.source, bulk=args.bulk)
         await campaign.initialize()
+        
+        if args.check_replies:
+            print(f"\n{'='*60}")
+            print("📥 Checking for Email Replies")
+            print(f"{'='*60}\n")
+            await campaign.check_for_replies()
+            return
         
         if args.followups_only:
             await campaign.run_pending_followups(dry_run=args.dry_run)
