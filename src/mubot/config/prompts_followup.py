@@ -24,26 +24,34 @@ You are writing a gentle follow-up email for a job application.
 
 <instructions>
 <purpose>Gentle reminder - they might be busy, not ignoring</purpose>
-<tone>Polite, brief, add one new piece of value</tone>
-<length>Under 80 words</length>
+<tone>Polite, brief, simple reminder</tone>
+<length>Under 60 words</length>
 
 <structure>
 1. Hi {recipient_name},
-2. Quick reference to original email
-3. ONE new achievement or value add
+2. Brief reference to your original email (just mention you reached out)
+3. Reiterate interest in the role (NO new fake achievements)
 4. Simple question
 5. Best, {sender_name} | Phone | LinkedIn
 </structure>
+
+<critical_rules>
+- NEVER invent fake achievements (no "I recently published...", no "I just completed...")
+- NEVER add new information not in the original email
+- Simply remind them of your original email and interest
+- Keep it brief and honest
+</critical_rules>
 
 <rules>
 - Use actual name: {recipient_name} (NOT placeholders like [name])
 - Use actual sender name: {sender_name}
 - Include sender phone: {sender_phone}
 - Include sender LinkedIn: {sender_linkedin}
-- Under 80 words total
+- Under 60 words total
 - Sound human, not corporate
 - NO markdown formatting - use PLAIN TEXT only
 - LinkedIn should be plain URL, NOT [LinkedIn](url)
+- NO em dashes (— or –) — use plain hyphens or rewrite the sentence
 </rules>
 </instructions>
 
@@ -52,7 +60,7 @@ You are writing a gentle follow-up email for a job application.
 <example>
 Hi Tanmai,
 
-I wanted to follow up on my email from last week about the Data Scientist role. I recently completed a project that reduced model inference time by 35%.
+I wanted to follow up on my email from last week about the Data Scientist role at ZS. I'm still very interested in the opportunity.
 
 Would you be open to a quick call this week?
 
@@ -89,32 +97,50 @@ You are writing a brief follow-up email for a job application.
 <instructions>
 <purpose>Brief check-in - they're likely busy</purpose>
 <tone>Even shorter, assume they're swamped</tone>
-<length>Under 60 words</length>
+<length>Under 50 words</length>
 
 <structure>
 1. Hi {recipient_name},
-2. Quick reference (1 sentence)
-3. ONE specific value add or update
+2. Quick reference (1 sentence max)
+3. Still interested (NO new fake achievements)
 4. Simple yes/no question
 5. Best, {sender_name} | Phone | LinkedIn
 </structure>
+
+<critical_rules>
+- NEVER invent fake achievements or updates
+- NEVER add new information not in the original email
+- Just a quick check-in, nothing new
+</critical_rules>
 
 <rules>
 - Use actual name: {recipient_name} (NOT placeholders)
 - Use actual sender name: {sender_name}
 - Include phone and LinkedIn
-- Under 60 words
+- Under 50 words
 - Shorter than follow-up 1
 - NO markdown formatting - use PLAIN TEXT only
 - LinkedIn should be plain URL, NOT [LinkedIn](url)
+- NO em dashes (— or –) — use plain hyphens or rewrite the sentence
 </rules>
 </instructions>
 
 <note>This is a reply in a Gmail thread - do NOT include a Subject line.</note>
 
+<example>
+Hi Tanmai,
+
+Just checking in on my application for the Data Scientist role. Still very interested in joining the team.
+
+Any updates on your end?
+
+Best,
+Muskan | +1 8574235724 | https://linkedin.com/in/muskan-khandelwal
+</example>
+
 <output>
 <email_body>
-[brief email with actual names, no subject line]
+[brief email with actual names, no subject line, NO fake achievements]
 </email_body>
 </output>
 """
@@ -141,7 +167,7 @@ You are writing a final follow-up email for a job application.
 <instructions>
 <purpose>Final attempt - leave on good terms</purpose>
 <tone>Graceful exit, professional, no pressure</tone>
-<length>Under 50 words</length>
+<length>Under 40 words</length>
 
 <structure>
 1. Hi {recipient_name},
@@ -151,22 +177,40 @@ You are writing a final follow-up email for a job application.
 5. Best, {sender_name} | Phone | LinkedIn
 </structure>
 
+<critical_rules>
+- NEVER invent fake achievements or updates
+- This is a simple goodbye/final check - nothing new
+- Keep it very short
+</critical_rules>
+
 <rules>
 - Use actual name: {recipient_name} (NOT placeholders)
 - Use actual sender name: {sender_name}
 - Include contact info
-- Under 50 words
+- Under 40 words
 - This is the LAST follow-up - be graceful
 - NO markdown formatting - use PLAIN TEXT only
 - LinkedIn should be plain URL, NOT [LinkedIn](url)
+- NO em dashes (— or –) — use plain hyphens or rewrite the sentence
 </rules>
 </instructions>
 
 <note>This is a reply in a Gmail thread - do NOT include a Subject line.</note>
 
+<example>
+Hi Tanmai,
+
+I wanted to send one final note regarding the Data Scientist role. I understand you may have moved forward with other candidates.
+
+I'd love to stay in touch for future opportunities.
+
+Best,
+Muskan | +1 8574235724 | https://linkedin.com/in/muskan-khandelwal
+</example>
+
 <output>
 <email_body>
-[short graceful email, no subject line]
+[short graceful email, no subject line, NO fake achievements]
 </email_body>
 </output>
 """

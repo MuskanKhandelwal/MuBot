@@ -30,6 +30,7 @@ MuBot: "✉️ Done! Here's your tailored email matching your Python/ML
 | 📧 **Gmail Integration** | ✅ | Sends emails with resume attachments |
 | 📊 **Google Sheets** | ✅ | Bulk campaign from spreadsheet |
 | 📅 **Follow-up Scheduling** | ✅ | Auto-schedules 3 follow-ups (4/8/10 days) |
+| 🔄 **Response Tracking** | ✅ | Auto-checks replies hourly, cancels follow-ups |
 | 🛡️ **Safety Controls** | ✅ | Rate limiting, daily limits, confirmations |
 | 📝 **Human-Style Prompts** | ✅ | Short, casual emails with phone/LinkedIn |
 
@@ -38,7 +39,6 @@ MuBot: "✉️ Done! Here's your tailored email matching your Python/ML
 | Feature | Status | Note |
 |---------|--------|------|
 | 🔗 **LinkedIn Integration** | ❌ | Code exists but not wired up |
-| 🔄 **Response Tracking** | ❌ | Can check Gmail but not automated |
 | 📊 **Pipeline Dashboard** | ❌ | Model exists, UI not implemented |
 | 🧪 **A/B Testing** | ❌ | Prompt exists, feature not built |
 | 🗄️ **Notion Sync** | ❌ | Placeholder only |
@@ -149,7 +149,7 @@ python auto_campaign.py --source sheets --limit 5 --dry-run
 ### Option 2: Interactive Chat
 
 ```bash
-python mubot_chat_enhanced.py
+python mubot.py
 ```
 
 **Example session:**
@@ -182,11 +182,23 @@ You: yes
 🤖 MuBot: ✅ Sent! 📎 Attached resume.pdf
 ```
 
-### Option 3: Schedule Follow-ups
+### Option 3: Send Due Follow-ups
 
 ```bash
-python schedule_followup.py
+python mubot.py followups
 ```
+
+### Option 4: Automated Reply Checking (New!)
+
+```bash
+# Check for replies once
+python auto_campaign.py --check-replies
+
+# Schedule it to run every hour (add to crontab)
+0 * * * * cd /path/to/mubot && python auto_campaign.py --check-replies
+```
+
+Automatically checks Gmail for replies and cancels scheduled follow-ups for respondents.
 
 ---
 
@@ -219,8 +231,7 @@ Edit `src/mubot/config/prompts_human.py` to change:
 ```
 MuBot/
 ├── auto_campaign.py          # 📧 Bulk email campaigns
-├── mubot_chat_enhanced.py    # 💬 Interactive chat
-├── schedule_followup.py      # 📅 Follow-up scheduler
+├── mubot.py                  # 💬 Interactive chat / unified CLI
 │
 ├── src/mubot/
 │   ├── agent/                # Core agent logic
@@ -258,9 +269,9 @@ MuBot/
 | Bulk Sheets campaign | ✅ | Send to multiple jobs at once |
 | Resume attachment | ✅ | Auto-attaches PDF |
 | Follow-up scheduling | ✅ | Schedules 3 follow-ups |
-| Check follow-ups | ⚠️ | Lists scheduled (sending TODO) |
+| Check follow-ups | ✅ | `mubot.py followups` lists and sends due ones |
 | Pipeline tracking | ❌ | Not implemented |
-| Response checking | ❌ | Not automated |
+| Response checking | ✅ | Hourly Gmail reply scan, auto-cancels follow-ups |
 
 ---
 
@@ -279,10 +290,8 @@ MuBot/
 
 ## 📝 Known Limitations
 
-1. **Follow-ups are scheduled but not auto-sent** - You need to run `schedule_followup.py` manually
-2. **Response checking exists but isn't automated** - `check_for_replies()` in gmail_client.py isn't called
-3. **Pipeline tracking has models but no UI** - Data structures exist, interface missing
-4. **Notion integration is placeholder only** - `sync_to_notion()` just prints "not implemented"
+1. **Pipeline tracking has models but no UI** - Data structures exist, interface missing
+2. **Notion integration is placeholder only** - Source code removed; `--source notion` is not supported
 
 ---
 

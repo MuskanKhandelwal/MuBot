@@ -14,7 +14,7 @@ Anthropic, and other LLM providers through a unified interface.
 
 import uuid
 from datetime import datetime
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from openai import AsyncOpenAI
 
@@ -59,22 +59,28 @@ class ReasoningEngine:
     def __init__(self, settings: Settings):
         """
         Initialize the reasoning engine.
-        
+
         Args:
             settings: Application configuration
         """
         self.settings = settings
+        self.provider = settings.llm_provider
         self.client = self._initialize_client()
         self.model = settings.llm_model
-    
-    def _initialize_client(self) -> AsyncOpenAI:
+
+    def _initialize_client(self) -> Any:
         """Initialize the appropriate LLM client based on settings."""
         if self.settings.llm_provider == "openai":
             if not self.settings.openai_api_key:
                 raise ValueError("OPENAI_API_KEY not configured")
             return AsyncOpenAI(api_key=self.settings.openai_api_key)
-        
-        # TODO: Add support for Anthropic, Kimi, etc.
+
+        if self.settings.llm_provider == "anthropic":
+            if not self.settings.anthropic_api_key:
+                raise ValueError("ANTHROPIC_API_KEY not configured")
+            from anthropic import AsyncAnthropic
+            return AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+
         raise NotImplementedError(f"Provider {self.settings.llm_provider} not yet supported")
     
     def _build_system_prompt(self, context: dict) -> str:
@@ -99,26 +105,61 @@ class ReasoningEngine:
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 2000,
+        _retries: int = 3,
     ) -> str:
         """
         Generate text using the LLM.
-        
+
         Args:
             messages: List of message dicts (role, content)
             temperature: Creativity (0-1)
             max_tokens: Maximum response length
-        
+
         Returns:
             Generated text
         """
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        
-        return response.choices[0].message.content or ""
+        import asyncio as _asyncio
+
+        for attempt in range(_retries):
+            try:
+                if self.provider == "anthropic":
+                    system = ""
+                    user_messages = []
+                    for m in messages:
+                        if m["role"] == "system":
+                            system = m["content"]
+                        else:
+                            user_messages.append(m)
+
+                    kwargs = dict(
+                        model=self.model,
+                        max_tokens=max_tokens,
+                        messages=user_messages,
+                    )
+                    if system:
+                        kwargs["system"] = system
+
+                    response = await self.client.messages.create(**kwargs)
+                    return response.content[0].text
+
+                # OpenAI
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return response.choices[0].message.content or ""
+
+            except Exception as e:
+                is_overloaded = "529" in str(e) or "overloaded" in str(e).lower()
+                is_rate_limit = "429" in str(e) or "rate" in str(e).lower()
+                if (is_overloaded or is_rate_limit) and attempt < _retries - 1:
+                    wait = 10 * (attempt + 1)
+                    print(f"   ⏳ API busy, retrying in {wait}s (attempt {attempt + 1}/{_retries})...")
+                    await _asyncio.sleep(wait)
+                else:
+                    raise
     
     # ======================================================================
     # Email Drafting
@@ -207,6 +248,28 @@ class ReasoningEngine:
         
         return entry
     
+    async def _extract_jd_requirements(self, job_description: str) -> str:
+        """
+        Extract the top 5 concrete requirements from a job description.
+
+        This first-pass call distills a long JD into a focused list so the
+        email draft prompt receives clean signal instead of raw JD text.
+        """
+        prompt = (
+            "Analyze this job description and return two sections:\n\n"
+            "REQUIRED (top 3 must-have requirements):\n"
+            "- specific technologies, frameworks, years of experience\n\n"
+            "DIFFERENTIATORS (2-3 things that make this role/company unique vs generic JDs):\n"
+            "- proprietary tech, niche skills, unique responsibilities, 'nice to have' that reveal what they truly value\n\n"
+            "Be concrete and brief — one line per bullet. No vague phrases like 'strong communication skills'.\n\n"
+            f"JD:\n{job_description[:3000]}"
+        )
+        messages = [
+            {"role": "system", "content": "You extract key job requirements concisely."},
+            {"role": "user", "content": prompt},
+        ]
+        return await self._generate(messages, temperature=0.1, max_tokens=300)
+
     async def draft_email_with_jd(
         self,
         user_profile: UserProfile,
@@ -217,54 +280,66 @@ class ReasoningEngine:
         recipient_name: Optional[str] = None,
         recipient_title: Optional[str] = None,
         company_history: Optional[str] = None,
+        job_reference: str = "",
+        role_skills: Optional[list[str]] = None,
     ) -> OutreachEntry:
         """
-        Generate a JD-optimized cold email draft using human-style prompts.
-        
-        Creates shorter, more conversational emails that specifically match
-        the user's resume to the job description requirements.
+        Generate a JD-optimized cold email draft.
+
+        Two-step: first extracts key requirements from the full JD, then drafts
+        an email that explicitly maps each requirement to the user's experience.
         """
         from datetime import datetime
         import uuid
         from mubot.memory.models import OutreachEntry, OutreachStatus
-        
-        # Build resume highlights for better matching
+
+        # Step 1: Extract structured requirements from full JD
+        if job_description and len(job_description) > 100:
+            jd_requirements = await self._extract_jd_requirements(job_description)
+        else:
+            jd_requirements = job_description or ""
+
         resume_highlights = self._build_resume_highlights(user_profile)
-        
-        # Extract first name for casual sign-offs
         first_name = user_profile.name if user_profile.name else "Muskan"
-        
-        # Use human-style JD matching prompt
         recipient = recipient_name if recipient_name else "Hiring Manager"
         resume_filename = user_profile.resume_path.name if user_profile.resume_path else "resume.pdf"
+
+        # Use role-specific skills if provided, otherwise fall back to profile skills
+        skills = role_skills or user_profile.key_skills or []
+
+        # Build subject instruction — include job reference number if present
+        subject_instruction = (
+            f'"{role_title} - {job_reference} at {company_name}"'
+            if job_reference
+            else f'"[role] at {company_name}"'
+        )
+
+        # Step 2: Draft email targeting the extracted requirements
         prompt = EMAIL_DRAFT_JD_MATCH_PROMPT.format(
             user_name=user_profile.name,
             user_first_name=first_name,
             user_linkedin=user_profile.linkedin_url or "",
             user_phone=user_profile.phone or "",
             user_background=user_profile.summary or "Data Scientist with ML experience",
-            user_key_skills=", ".join(user_profile.key_skills) if user_profile.key_skills else "Python, ML",
+            user_key_skills=", ".join(skills) if skills else "Python, ML",
             user_resume_highlights=resume_highlights,
             target_company=company_name,
             target_role=role_title,
+            job_reference=job_reference,
+            subject_instruction=subject_instruction,
             recipient_name=recipient,
-            jd_requirements=job_description[:1000] if job_description else "",
+            jd_requirements=jd_requirements,
             resume_filename=resume_filename,
         )
-        
-        # Generate with human-style system prompt
+
         messages = [
             {"role": "system", "content": "You are a helpful assistant that writes natural, conversational cold emails. Be brief, human, and specific."},
             {"role": "user", "content": prompt},
         ]
-        
-        # Lower max_tokens to force shorter emails (100 words ≈ 130 tokens)
+
         response = await self._generate(messages, temperature=0.75, max_tokens=1000)
-        
-        # Parse the response
         subject, body, personalization = self._parse_email_response(response)
-        
-        # Create entry
+
         entry = OutreachEntry(
             id=str(uuid.uuid4()),
             recipient_email="",
@@ -279,7 +354,7 @@ class ReasoningEngine:
             drafted_at=datetime.utcnow(),
             max_followups=self.settings.max_followups,
         )
-        
+
         return entry
     
     def _build_resume_highlights(self, user_profile: UserProfile) -> str:
@@ -477,7 +552,10 @@ class ReasoningEngine:
         
         # Strip markdown link formatting [text](url) -> url
         result = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'\2', result)
-        
+
+        # Remove em dashes
+        result = result.replace('—', '-').replace('–', '-')
+
         return result
     
     # ======================================================================

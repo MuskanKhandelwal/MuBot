@@ -231,7 +231,13 @@ class UserProfile(BaseModel):
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
     resume_url: Optional[str] = None
-    resume_path: Optional[Path] = None  # Local path for attachments
+    resume_path: Optional[Path] = None  # Local path for attachments (backward compat)
+    
+    # Resume versions for different roles
+    resume_versions: dict[str, Path] = Field(default_factory=dict)  # e.g., {"data_science": "/path/to/ds_resume.pdf"}
+
+    # Role-specific skill sets
+    skills_by_role: dict[str, list[str]] = Field(default_factory=dict)  # e.g., {"data_science": ["Python", "SQL", ...]}
     
     # Preferences
     preferred_tone: EmailTone = EmailTone.FRIENDLY

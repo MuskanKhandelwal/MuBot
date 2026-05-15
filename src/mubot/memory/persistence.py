@@ -146,7 +146,7 @@ class FileStore:
         
         metadata, existing_content = result
         new_content = existing_content + "\n\n" + content
-        return self.write_markdown(relative_path, metadata, new_content, backup=True)
+        return self.write_markdown(relative_path, metadata, new_content, backup=False)
 
 
 class JsonStore:
@@ -447,11 +447,14 @@ class MemoryInitializer:
 - `outreach/converted` - Led to interviews
 
 ## Resume Versions
-<!-- Different resumes for different roles -->
-- **General**: [path or link]
-- **Frontend-focused**: [path or link]
-- **Backend-focused**: [path or link]
-- **Management**: [path or link]
+<!-- Different resumes for different roles - used by auto-resume-selection -->
+- **Data Science**: /path/to/ds_resume.pdf
+- **AI Engineer**: /path/to/ai_resume.pdf
+- **ML Engineer**: /path/to/ml_resume.pdf
+- **Data Engineer**: /path/to/de_resume.pdf
+- **Software Engineer**: /path/to/swe_resume.pdf
+
+<!-- MuBot will automatically pick the right resume based on job title keywords -->
 
 ## Portfolio Links
 <!-- Projects to reference in emails -->

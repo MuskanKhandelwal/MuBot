@@ -20,7 +20,8 @@ The agent follows a structured workflow (the REACT pattern):
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from mubot.agent.reasoning import ReasoningEngine
@@ -189,6 +190,83 @@ class JobSearchAgent:
         
         return draft, warnings
     
+    def _select_skills_for_role(self, role_title: str) -> list[str]:
+        """Return role-specific skill list from USER.md, falling back to key_skills."""
+        if not self.user_profile:
+            return []
+
+        skills_map = self.user_profile.skills_by_role
+        if not skills_map:
+            return self.user_profile.key_skills
+
+        role_lower = role_title.lower()
+
+        if any(kw in role_lower for kw in ["data engineer", "data engineering", "etl", "pipeline"]):
+            key = "data_engineer"
+        elif any(kw in role_lower for kw in ["software engineer", "swe", "backend", "full stack", "fullstack", "platform engineer"]):
+            key = "software_engineer"
+        elif any(kw in role_lower for kw in ["ai engineer", "ai/ml engineer", "ai platform", "ai infrastructure"]):
+            key = "ai_engineer"
+        elif any(kw in role_lower for kw in ["machine learning", "ml engineer", "ai/ml", "aiml"]):
+            key = "ai/ml"
+        elif any(kw in role_lower for kw in ["data scientist", "data science", "applied scientist", "research scientist", "analytics", "quant"]):
+            key = "data_science"
+        else:
+            key = None
+
+        if key and key in skills_map:
+            return skills_map[key]
+
+        # Fuzzy fallback: find closest key
+        for k in skills_map:
+            if any(word in role_lower for word in k.replace("_", " ").split()):
+                return skills_map[k]
+
+        return self.user_profile.key_skills
+
+    def _select_resume_for_role(self, role_title: str) -> Optional[str]:
+        """
+        Select appropriate resume based on job title.
+        
+        Checks resume_versions dict first, falls back to default resume_path.
+        
+        Args:
+            role_title: Job title/role name
+            
+        Returns:
+            Path to resume file, or None if no resume configured
+        """
+        if not self.user_profile:
+            return None
+        
+        role_lower = role_title.lower()
+        versions = self.user_profile.resume_versions
+        
+        # Check if we have specific versions configured
+        if versions:
+            # Match by role keywords
+            if any(kw in role_lower for kw in ["data engineer", "dataengineering", "de "]):
+                if "data_engineer" in versions:
+                    return str(versions["data_engineer"])
+            elif any(kw in role_lower for kw in ["ai engineer", "ai/ml", "ai-ml", "artificial intelligence"]):
+                if "ai_engineer" in versions:
+                    return str(versions["ai_engineer"])
+            elif any(kw in role_lower for kw in ["machine learning", "ml engineer", "ml/ai", "ai/ml engineer"]):
+                if "ml_engineer" in versions or "aiml" in versions:
+                    return str(versions.get("ml_engineer") or versions.get("aiml"))
+            elif any(kw in role_lower for kw in ["data scientist", "data science", "data analyst", "analytics", "applied scientist"]):
+                if "data_science" in versions:
+                    return str(versions["data_science"])
+            elif any(kw in role_lower for kw in ["software engineer", "swe", "full stack", "fullstack", "backend", "frontend"]):
+                if "software_engineer" in versions or "swe" in versions:
+                    return str(versions.get("software_engineer") or versions.get("swe"))
+        
+        # Fall back to default resume_path
+        if self.user_profile.resume_path:
+            return str(self.user_profile.resume_path)
+        
+        return None
+    
     async def send_email(
         self,
         entry: OutreachEntry,
@@ -229,10 +307,18 @@ class JobSearchAgent:
         if not authenticated:
             return False, "Gmail authentication failed. Please check your credentials."
         
-        # Combine entry attachments with passed attachments
-        all_attachments = list(entry.attachments or [])
+        # If explicit attachments passed (per-job resume), skip auto-selection
         if attachments:
-            all_attachments.extend(attachments)
+            all_attachments = list(attachments)
+        else:
+            auto_resume = self._select_resume_for_role(entry.role_title)
+            if auto_resume:
+                if not entry.attachments:
+                    entry.attachments = []
+                if auto_resume not in entry.attachments:
+                    entry.attachments.append(auto_resume)
+                    print(f"📎 Auto-attached resume: {Path(auto_resume).name}")
+            all_attachments = list(entry.attachments or [])
         
         result = await gmail.send_email(
             to=entry.recipient_email,
@@ -250,14 +336,18 @@ class JobSearchAgent:
         entry.gmail_message_id = result.get("message_id")
         entry.gmail_thread_id = result.get("thread_id")
         entry.status = OutreachStatus.SENT
-        entry.sent_at = datetime.utcnow()
-        
+        entry.sent_at = datetime.now(timezone.utc)
+
         # Save updated entry
         self.memory.save_outreach_entry(entry)
-        
-        # Update heartbeat state
+
+        # Update heartbeat state — reset daily count if date rolled over
         state = self.memory.load_heartbeat_state()
-        state.last_send_timestamp = datetime.utcnow()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if state.current_date != today:
+            state.current_date = today
+            state.daily_email_count = 0
+        state.last_send_timestamp = datetime.now(timezone.utc)
         state.daily_email_count += 1
         self.memory.save_heartbeat_state(state)
         
@@ -267,6 +357,7 @@ class JobSearchAgent:
         self,
         entry: OutreachEntry,
         days_delay: Optional[int] = None,
+        job_description: str = "",
     ) -> tuple[bool, str]:
         """
         Schedule a follow-up email.
@@ -274,6 +365,7 @@ class JobSearchAgent:
         Args:
             entry: Original outreach entry
             days_delay: Days to wait (default: from settings)
+            job_description: Job description for follow-up context
         
         Returns:
             Tuple of (success, message)
@@ -291,7 +383,7 @@ class JobSearchAgent:
             return False, check.message
         
         # Calculate scheduled time
-        scheduled_time = datetime.utcnow() + timedelta(days=days_delay)
+        scheduled_time = datetime.now(timezone.utc) + timedelta(days=days_delay)
         entry.next_followup_scheduled = scheduled_time
         
         # Add to heartbeat state
@@ -300,6 +392,11 @@ class JobSearchAgent:
             "entry_id": entry.id,
             "due_at": scheduled_time.isoformat(),
             "company": entry.company_name,
+            "role": entry.role_title,
+            "email": entry.recipient_email,
+            "recipient_name": entry.recipient_name or "Hiring Manager",
+            "thread_id": entry.gmail_thread_id,  # Store thread_id for replies
+            "job_description": job_description,  # Store JD for follow-up context
             "followup_number": entry.followup_count + 1,
         })
         self.memory.save_heartbeat_state(state)
@@ -327,16 +424,23 @@ class JobSearchAgent:
         """
         # Classify the response
         category, data = await self.reasoning.classify_response(entry, response_body)
-        
+
         # Update entry
         entry.status = OutreachStatus.REPLIED
         entry.response_category = category
         entry.response_body = response_body
-        entry.replied_at = datetime.utcnow()
-        
+        entry.replied_at = datetime.now(timezone.utc)
+
         # Clear any scheduled follow-up
         entry.next_followup_scheduled = None
-        
+
+        # Log to learnings so we know what's working
+        try:
+            from mubot.memory.learnings import LearningsTracker
+            LearningsTracker(self.memory.base_path).log_response(entry, category, response_body)
+        except Exception:
+            pass
+
         # Save to memory
         self.memory.save_outreach_entry(entry)
         
@@ -365,7 +469,7 @@ class JobSearchAgent:
         
         # TODO: Load actual data for comprehensive summary
         summary_data = {
-            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "emails_sent": stats.emails_sent,
             "replies_received": stats.replies_received,
             "positive_responses": stats.positive_responses,
