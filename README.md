@@ -48,20 +48,9 @@ MuBot: "✉️ Done! Here's your tailored email matching your Python/ML
 
 ## 🏗️ Architecture
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Input     │────▶│   MuBot     │────▶│   Gmail     │
-│  (Sheets/   │     │  (Reasoning │     │  (Sends     │
-│   Chat)     │     │   + Draft)  │     │   Emails)   │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌────────────┐  ┌────────────┐  ┌────────────┐
-    │  USER.md   │  │  Memory    │  │  Sheets    │
-    │  (Profile) │  │  (State)   │  │  (Jobs)    │
-    └────────────┘  └────────────┘  └────────────┘
-```
+<p align="center">
+  <img src="assets/arch.png" alt="MuBot architecture" width="800">
+</p>
 
 **The Flow:**
 1. **Input** via Google Sheets or interactive chat
