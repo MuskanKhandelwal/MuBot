@@ -141,6 +141,10 @@ python auto_campaign.py --source sheets --limit 5 --dry-run
 python mubot.py
 ```
 
+<p align="center">
+  <img src="assets/chatbot_UI.png" alt="MuBot chatbot UI" width="800">
+</p>
+
 **Example session:**
 ```
 🤖 MuBot: Hi! How can I help?
@@ -212,6 +216,29 @@ Edit `src/mubot/config/prompts_human.py` to change:
 - Tone (casual/professional)
 - Length constraints
 - What to include/exclude
+
+---
+
+## 🖥️ Web Dashboard (Next.js)
+
+A read-only dashboard + pipeline view backed by a FastAPI wrapper over the
+existing Python agent.
+
+```bash
+# One-time setup
+pip install -e ".[api]"
+cd web && npm install && cp .env.local.example .env.local
+
+# Run both servers (from project root)
+./dev.sh
+```
+
+- FastAPI on `http://localhost:8000` (`/status`, `/pipeline`, `/followups`, `/learnings`)
+- Next.js on `http://localhost:3000` (Dashboard, Pipeline)
+
+Auth is disabled when `API_TOKEN` is unset. For deployed setups (Vercel +
+Render/Fly), set a matching `API_TOKEN` on both sides and add the Vercel
+domain to `CORS_ORIGINS` on the API.
 
 ---
 

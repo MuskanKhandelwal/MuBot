@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     )
     
     llm_model: str = Field(
-        default="gpt-4-turbo-preview",
+        default="gpt-4o",
         description="Model to use for generation",
     )
     
