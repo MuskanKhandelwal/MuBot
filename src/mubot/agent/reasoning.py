@@ -69,19 +69,10 @@ class ReasoningEngine:
         self.model = settings.llm_model
 
     def _initialize_client(self) -> Any:
-        """Initialize the appropriate LLM client based on settings."""
-        if self.settings.llm_provider == "openai":
-            if not self.settings.openai_api_key:
-                raise ValueError("OPENAI_API_KEY not configured")
-            return AsyncOpenAI(api_key=self.settings.openai_api_key)
-
-        if self.settings.llm_provider == "anthropic":
-            if not self.settings.anthropic_api_key:
-                raise ValueError("ANTHROPIC_API_KEY not configured")
-            from anthropic import AsyncAnthropic
-            return AsyncAnthropic(api_key=self.settings.anthropic_api_key)
-
-        raise NotImplementedError(f"Provider {self.settings.llm_provider} not yet supported")
+        """Initialize the OpenAI client."""
+        if not self.settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY not configured")
+        return AsyncOpenAI(api_key=self.settings.openai_api_key)
     
     def _build_system_prompt(self, context: dict) -> str:
         """
@@ -122,27 +113,6 @@ class ReasoningEngine:
 
         for attempt in range(_retries):
             try:
-                if self.provider == "anthropic":
-                    system = ""
-                    user_messages = []
-                    for m in messages:
-                        if m["role"] == "system":
-                            system = m["content"]
-                        else:
-                            user_messages.append(m)
-
-                    kwargs = dict(
-                        model=self.model,
-                        max_tokens=max_tokens,
-                        messages=user_messages,
-                    )
-                    if system:
-                        kwargs["system"] = system
-
-                    response = await self.client.messages.create(**kwargs)
-                    return response.content[0].text
-
-                # OpenAI
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,

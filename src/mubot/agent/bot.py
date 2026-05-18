@@ -3,7 +3,8 @@ MuBot Bot — Conversational agent with GPT-4 function calling.
 
 Type natural language commands:
   list follow-ups
-  remove follow-ups for Netflix
+  cancel follow-ups for Netflix
+  cancel Netflix follow-ups — I got rejected
   check replies
   what's working
   run campaign
@@ -18,69 +19,100 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from mubot.agent.core import JobSearchAgent
 from mubot.config import get_settings
 
 
-# Anthropic tool format (input_schema instead of parameters, no "function" wrapper)
+# OpenAI function calling format
 TOOLS = [
     {
-        "name": "list_followups",
-        "description": "List all scheduled follow-ups — shows pending, overdue, and already sent",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "remove_followup",
-        "description": "Cancel all scheduled follow-ups for a specific company",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "company": {
-                    "type": "string",
-                    "description": "Company name to cancel follow-ups for",
-                }
-            },
-            "required": ["company"],
+        "type": "function",
+        "function": {
+            "name": "list_followups",
+            "description": "List all scheduled follow-ups — shows pending, overdue, and already sent",
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
-        "name": "check_replies",
-        "description": "Check Gmail for replies to sent outreach emails; auto-cancels follow-ups where replies were found",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "show_status",
-        "description": "Show current job search status: emails sent today, pending follow-ups, overdue items",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "show_learnings",
-        "description": "Show what email patterns are getting replies, response rate, and what isn't working",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "run_campaign",
-        "description": "Run the email campaign from Google Sheets — draft and send initial emails to pending jobs",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "limit": {"type": "integer", "description": "Max number of emails to send (default 10)"},
-                "dry_run": {"type": "boolean", "description": "Preview only, don't actually send"},
+        "type": "function",
+        "function": {
+            "name": "cancel_followup",
+            "description": (
+                "Cancel all scheduled follow-ups for a specific company. "
+                "Use reason='rejected' when the user was rejected through a non-email channel "
+                "(LinkedIn, portal, call) — this also marks the row 'Rejected' in the Sheet. "
+                "Omit reason for plain cancellation (e.g. user lost interest)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "description": "Company name to cancel follow-ups for",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "enum": ["rejected"],
+                        "description": "Optional. 'rejected' also updates the Sheet status to 'Rejected'.",
+                    },
+                },
+                "required": ["company"],
             },
-            "required": [],
         },
     },
     {
-        "name": "run_followups",
-        "description": "Send all follow-up emails that are due now",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "dry_run": {"type": "boolean", "description": "Preview only, don't send"},
+        "type": "function",
+        "function": {
+            "name": "check_replies",
+            "description": "Check Gmail for replies to sent outreach emails; auto-cancels follow-ups where replies were found",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_status",
+            "description": "Show current job search status: emails sent today, pending follow-ups, overdue items",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_learnings",
+            "description": "Show what email patterns are getting replies, response rate, and what isn't working",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_campaign",
+            "description": "Run the email campaign from Google Sheets — draft and send initial emails to pending jobs",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max number of emails to send (default 10)"},
+                    "dry_run": {"type": "boolean", "description": "Preview only, don't actually send"},
+                },
+                "required": [],
             },
-            "required": [],
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_followups",
+            "description": "Send all follow-up emails that are due now",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dry_run": {"type": "boolean", "description": "Preview only, don't send"},
+                },
+                "required": [],
+            },
         },
     },
 ]
@@ -97,7 +129,7 @@ class MuBot:
     def __init__(self):
         self.settings = get_settings()
         self.agent = JobSearchAgent()
-        self.client = AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+        self.client = AsyncOpenAI(api_key=self.settings.openai_api_key)
         self.history: list[dict] = []
 
     async def initialize(self) -> bool:
@@ -117,8 +149,8 @@ class MuBot:
     async def _call_tool(self, name: str, args: dict) -> str:
         if name == "list_followups":
             return self._list_followups()
-        if name == "remove_followup":
-            return self._remove_followup(args.get("company", ""))
+        if name == "cancel_followup":
+            return await self._cancel_followup(args.get("company", ""), args.get("reason", ""))
         if name == "check_replies":
             return await self._check_replies()
         if name == "show_status":
@@ -161,20 +193,46 @@ class MuBot:
             lines.append(f"\n  + {sent_count} already sent")
         return "\n".join(lines)
 
-    def _remove_followup(self, company: str) -> str:
+    async def _cancel_followup(self, company: str, reason: str = "") -> str:
         if not company:
             return "Specify a company name."
+        target = company.strip().lower()
         state = self.agent.memory.load_heartbeat_state()
-        before = len(state.scheduled_followups)
+        matched = [
+            f for f in state.scheduled_followups
+            if f.get("company", "").strip().lower() == target
+        ]
         state.scheduled_followups = [
             f for f in state.scheduled_followups
-            if company.lower() not in f.get("company", "").lower()
+            if f.get("company", "").strip().lower() != target
         ]
-        removed = before - len(state.scheduled_followups)
         self.agent.memory.save_heartbeat_state(state)
-        if removed:
-            return f"Removed {removed} follow-up(s) for '{company}'."
-        return f"No follow-ups found matching '{company}'."
+
+        removed = len(matched)
+        if not removed:
+            return f"No follow-ups found matching '{company}'."
+
+        msg = f"Cancelled {removed} follow-up(s) for '{company}'."
+
+        if reason == "rejected":
+            row_numbers = {f.get("row_number") for f in matched if f.get("row_number")}
+            if not row_numbers:
+                return msg + " (No sheet rows linked — Sheet status unchanged.)"
+            try:
+                from integrations.google_sheets import GoogleSheetsIntegration
+                sheets = GoogleSheetsIntegration(
+                    credentials_path="./credentials/sheets_credentials.json",
+                    spreadsheet_name="Job Applications",
+                )
+                updated = 0
+                for row in row_numbers:
+                    if await sheets.update_job_status(row, "Rejected", datetime.now(timezone.utc)):
+                        updated += 1
+                msg += f" Marked {updated}/{len(row_numbers)} row(s) 'Rejected' in Sheet."
+            except Exception as e:
+                msg += f" (Sheet update failed: {e})"
+
+        return msg
 
     async def _check_replies(self) -> str:
         from mubot.tools.gmail_client import GmailClient
@@ -259,48 +317,43 @@ class MuBot:
         """Send a message, execute any tool calls, return final reply."""
         self.history.append({"role": "user", "content": user_message})
 
-        response = await self.client.messages.create(
+        messages = [{"role": "system", "content": self._system_prompt()}, *self.history]
+
+        response = await self.client.chat.completions.create(
             model=self.settings.llm_model,
             max_tokens=1024,
-            system=self._system_prompt(),
-            messages=self.history,
+            messages=messages,
             tools=TOOLS,
+            tool_choice="auto",
         )
 
-        # Check for tool use blocks in Anthropic response
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
-        text_blocks = [b for b in response.content if b.type == "text"]
+        msg = response.choices[0].message
 
-        if tool_uses:
-            # Record assistant message with all content blocks
-            self.history.append({
-                "role": "assistant",
-                "content": response.content,
-            })
+        if msg.tool_calls:
+            # Record assistant message with tool_calls attached
+            self.history.append(msg)
 
-            # Execute each tool and collect results
-            tool_results = []
-            for block in tool_uses:
-                result = await self._call_tool(block.name, block.input)
+            # Execute each tool and append tool result messages
+            for tc in msg.tool_calls:
+                args = json.loads(tc.function.arguments or "{}")
+                result = await self._call_tool(tc.function.name, args)
                 print(result)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
+                self.history.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
                     "content": result,
                 })
 
-            self.history.append({"role": "user", "content": tool_results})
-
-            # Get brief follow-up from Claude
-            final = await self.client.messages.create(
+            # Get brief follow-up
+            final_messages = [{"role": "system", "content": self._system_prompt()}, *self.history]
+            final = await self.client.chat.completions.create(
                 model=self.settings.llm_model,
                 max_tokens=256,
-                system=self._system_prompt(),
-                messages=self.history,
+                messages=final_messages,
             )
-            reply = final.content[0].text if final.content else ""
+            reply = final.choices[0].message.content or ""
         else:
-            reply = text_blocks[0].text if text_blocks else ""
+            reply = msg.content or ""
 
         self.history.append({"role": "assistant", "content": reply})
 
@@ -327,7 +380,7 @@ class MuBot:
 
         print(f"Hi {first_name}! {len(unsent)} follow-ups pending.")
         print()
-        print("Commands: list follow-ups · remove [company] · check replies · what's working · run campaign · status")
+        print("Commands: list follow-ups · cancel [company] (add 'rejected' if rejected) · check replies · what's working · run campaign · status")
         print("Type 'quit' to exit.")
         print()
 
