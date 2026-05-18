@@ -34,16 +34,6 @@ MuBot: "✉️ Done! Here's your tailored email matching your Python/ML
 | 🛡️ **Safety Controls** | ✅ | Rate limiting, daily limits, confirmations |
 | 📝 **Human-Style Prompts** | ✅ | Short, casual emails with phone/LinkedIn |
 
-### What's Not Working (Yet)
-
-| Feature | Status | Note |
-|---------|--------|------|
-| 🔗 **LinkedIn Integration** | ❌ | Code exists but not wired up |
-| 📊 **Pipeline Dashboard** | ❌ | Model exists, UI not implemented |
-| 🧪 **A/B Testing** | ❌ | Prompt exists, feature not built |
-| 🗄️ **Notion Sync** | ❌ | Placeholder only |
-| 🔍 **RAG Search** | ❌ | ChromaDB setup but not used |
-
 ---
 
 ## 🏗️ Architecture
@@ -221,7 +211,7 @@ Edit `src/mubot/config/prompts_human.py` to change:
 
 ## 🖥️ Web Dashboard (Next.js)
 
-A read-only dashboard + pipeline view backed by a FastAPI wrapper over the
+A dashboard and pipeline view backed by a FastAPI wrapper over the
 existing Python agent.
 
 ```bash
@@ -309,19 +299,6 @@ MuBot/
 1. **Pipeline tracking has models but no UI** - Data structures exist, interface missing
 2. **Notion integration is placeholder only** - Source code removed; `--source notion` is not supported
 
----
-
-## 🚧 Roadmap
-
-### v0.2 (In Progress)
-- [ ] Auto-send scheduled follow-ups
-- [ ] Auto-check for replies
-- [ ] Web UI for pipeline
-
-### v0.3 (Future)
-- [ ] LinkedIn company research
-- [ ] Response classification
-- [ ] A/B testing prompts
 
 ---
 
