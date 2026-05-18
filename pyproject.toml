@@ -98,6 +98,12 @@ integrations = [
     "notion-client>=2.2.0",
 ]
 
+# Web API server (for Next.js frontend)
+api = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+]
+
 [project.scripts]
 # Command-line entry points
 mubot = "mubot.cli:main"
